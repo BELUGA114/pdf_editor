@@ -6,7 +6,7 @@ from docx import Document
 import difflib
 import os
 import io
-from PIL import Image, ImageTk
+from PIL import Image, ImageTk, ImageDraw
 
 # ================= 配置区域 =================
 TESSERACT_PATH = r"E:\Code\Tesseract\tesseract.exe"
@@ -90,10 +90,6 @@ class DocxPdfReviewer:
         except tk.TclError:
             pass
 
-    @staticmethod
-    def _show_copy_menu(event, menu):
-        menu.post(event.x_root, event.y_root)
-
     def load_docx(self):
         self.docx_path = filedialog.askopenfilename(filetypes=[("Word Documents", "*.docx")])
         if self.docx_path:
@@ -156,12 +152,13 @@ class DocxPdfReviewer:
         if not self.pdf_path:
             return
 
-        self.lbl_pdf.config(text=f"正在OCR识别 {os.path.basename(self.pdf_path)} ...", fg="orange")
+        # 阶段1：加载PDF并去红头（暂不OCR）
+        self._pdf_name = os.path.basename(self.pdf_path)
+        self.lbl_pdf.config(text=f"正在加载 {self._pdf_name} ...", fg="orange")
         self.root.update()
 
-        # OCR前先去除PDF图像中的红色像素（红头干扰），再提取全文本
         self.cleaned_pdf_images = []
-        pdf_lines = []
+        self.crop_box = None
         try:
             doc = fitz.open(self.pdf_path)
             mat = fitz.Matrix(2.0, 2.0)
@@ -171,18 +168,183 @@ class DocxPdfReviewer:
                 img_data = pix.tobytes("png")
                 img = Image.open(io.BytesIO(img_data)).convert("RGB")
                 cleaned = self._remove_red_pixels(img)
-                self.cleaned_pdf_images.append(cleaned.copy())
-                text = pytesseract.image_to_string(cleaned, lang='chi_sim', config='--psm 6')
+                self.cleaned_pdf_images.append(cleaned)
+                self.lbl_pdf.config(text=f"加载中... 第 {i + 1}/{len(doc)} 页")
+                self.root.update()
+
+            self.lbl_pdf.config(text=f"{self._pdf_name}（已加载，请裁剪）", fg="orange")
+            self.root.update()
+            # 阶段2：弹出裁剪对话框（首页框选，应用到所有页）
+            self._show_crop_dialog()
+        except Exception as e:
+            self.lbl_pdf.config(text=f"{self._pdf_name}（加载失败）", fg="red")
+            messagebox.showerror("错误", f"加载PDF异常:\n{str(e)}")
+
+    def _show_crop_dialog(self):
+        """两步裁剪：第1页（单数页基准）→ 第2页（双数页基准）→ OCR"""
+        if not self.cleaned_pdf_images:
+            return
+
+        self.discard_boxes: list = [None, None]
+        win = tk.Toplevel(self.root)
+        win.title("裁剪PDF（框选要丢弃的区域）")
+        win.geometry("900x700")
+
+        info_lbl = tk.Label(win, text="", fg="blue")
+        info_lbl.pack(pady=5)
+
+        frame = tk.Frame(win)
+        frame.pack(fill=tk.BOTH, expand=True)
+        v_scroll = tk.Scrollbar(frame, orient=tk.VERTICAL)
+        v_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        h_scroll = tk.Scrollbar(frame, orient=tk.HORIZONTAL)
+        h_scroll.pack(side=tk.BOTTOM, fill=tk.X)
+        canvas = tk.Canvas(frame, cursor="cross", bg="gray",
+                           yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        v_scroll.config(command=canvas.yview)
+        h_scroll.config(command=canvas.xview)
+
+        def load_page(page_idx):
+            """加载指定页到画布，返回 (scale, offset_x, offset_y)"""
+            canvas.update()
+            cw = max(canvas.winfo_width(), 100)
+            ch = max(canvas.winfo_height(), 100)
+            img = self.cleaned_pdf_images[page_idx]
+            s = min(cw / img.width, ch / img.height, 1.0)
+            dw = int(img.width * s)
+            dh = int(img.height * s)
+            display = img.resize((dw, dh), Image.Resampling.LANCZOS)
+            tk_img = ImageTk.PhotoImage(display)
+            canvas.__dict__['_img'] = tk_img
+            canvas.delete("all")
+            # 画布坐标原点到图片左上角的偏移
+            ox = cw // 2 - dw // 2
+            oy = ch // 2 - dh // 2
+            canvas.create_image(cw // 2, ch // 2, anchor=tk.CENTER, image=tk_img)
+            canvas.config(scrollregion=canvas.bbox(tk.ALL))
+            return s, ox, oy
+
+        step = 0  # 0 = 设置第1页, 1 = 设置第2页
+        rect_id = None
+        start_x, start_y = 0, 0
+        cur_scale = 1.0
+        img_offset_x, img_offset_y = 0, 0
+
+        def refresh_canvas():
+            nonlocal rect_id, start_x, start_y, cur_scale, img_offset_x, img_offset_y
+            rect_id = None
+            start_x, start_y = 0, 0
+            cur_scale, img_offset_x, img_offset_y = load_page(step)
+            if step == 0:
+                info_lbl.config(text="第1步：框选第1页中要丢弃的区域（单数页使用此位置）")
+                btn_next.config(text="保存并设置第2页 →", state=tk.NORMAL)
+                btn_skip.config(text="跳过此步（不擦除单数页）", state=tk.NORMAL)
+            else:
+                info_lbl.config(text="第2步：框选第2页中要丢弃的区域（双数页使用此位置）")
+                btn_next.config(text="确认并开始OCR", state=tk.NORMAL)
+                btn_skip.config(text="跳过（不擦除双数页）", state=tk.NORMAL)
+
+        # 鼠标滚轮
+        def on_wheel(event):
+            canvas.yview_scroll(-1 if event.delta > 0 else 1, tk.UNITS)
+        canvas.bind("<MouseWheel>", on_wheel)
+
+        # 框选交互
+        def on_down(event):
+            nonlocal start_x, start_y, rect_id
+            start_x = canvas.canvasx(event.x)
+            start_y = canvas.canvasy(event.y)
+            if rect_id is not None:
+                canvas.delete(rect_id)
+            rect_id = canvas.create_rectangle(
+                start_x, start_y, start_x, start_y,
+                outline="blue", width=2, dash=(4, 4),
+            )
+
+        def on_drag(event):
+            if rect_id is not None:
+                cur_x = canvas.canvasx(event.x)
+                cur_y = canvas.canvasy(event.y)
+                canvas.coords(rect_id, start_x, start_y, cur_x, cur_y)
+
+        def on_up(event):
+            nonlocal rect_id
+            end_x = canvas.canvasx(event.x)
+            end_y = canvas.canvasy(event.y)
+            x1, x2 = sorted([start_x, end_x])
+            y1, y2 = sorted([start_y, end_y])
+            if (x2 - x1) > 5 and (y2 - y1) > 5:
+                raw = (
+                    int((x1 - img_offset_x) / cur_scale),
+                    int((y1 - img_offset_y) / cur_scale),
+                    int((x2 - img_offset_x) / cur_scale),
+                    int((y2 - img_offset_y) / cur_scale),
+                )
+                self.discard_boxes[step] = raw
+            else:
+                self.discard_boxes[step] = None
+                if rect_id is not None:
+                    canvas.delete(rect_id)
+                    rect_id = None
+
+        canvas.bind("<ButtonPress-1>", on_down)
+        canvas.bind("<B1-Motion>", on_drag)
+        canvas.bind("<ButtonRelease-1>", on_up)
+
+        btn_frame = tk.Frame(win)
+        btn_frame.pack(pady=8)
+
+        def on_next():
+            nonlocal step
+            if step == 0:
+                step = 1
+                refresh_canvas()
+            else:
+                win.destroy()
+                self._apply_crop_and_ocr()
+
+        def on_skip():
+            nonlocal step
+            self.discard_boxes[step] = None
+            if step == 0:
+                step = 1
+                refresh_canvas()
+            else:
+                win.destroy()
+                self._apply_crop_and_ocr()
+
+        btn_skip = tk.Button(btn_frame, text="", command=on_skip, width=20)
+        btn_skip.pack(side=tk.LEFT, padx=10)
+        btn_next = tk.Button(btn_frame, text="", command=on_next, bg="#d1ecf1", width=22)
+        btn_next.pack(side=tk.LEFT, padx=10)
+
+        refresh_canvas()
+
+    def _apply_crop_and_ocr(self):
+        """按奇偶页分别擦除框选区域，然后执行OCR"""
+        self.lbl_pdf.config(text="正在OCR识别...", fg="orange")
+        self.root.update()
+
+        pdf_lines = []
+        try:
+            for i, img in enumerate(self.cleaned_pdf_images):
+                box = self.discard_boxes[i % 2]
+                if box:
+                    draw = ImageDraw.Draw(img)
+                    draw.rectangle(box, fill="white")
+                text = pytesseract.image_to_string(img, lang='chi_sim', config='--psm 6')
                 pdf_lines.append(text)
 
-                self.lbl_pdf.config(text=f"OCR中... 第 {i + 1}/{len(doc)} 页")
+                self.lbl_pdf.config(text=f"OCR中... 第 {i + 1}/{len(self.cleaned_pdf_images)} 页")
                 self.root.update()
 
             raw_pdf_text = "\n".join(pdf_lines)
             self.pdf_text = self._normalize_text(raw_pdf_text)
-            self.lbl_pdf.config(text=f"{os.path.basename(self.pdf_path)}（OCR完成）", fg="green")
+            self.lbl_pdf.config(text=f"{self._pdf_name}（OCR完成）", fg="green")
+            messagebox.showinfo("完成", "PDF处理完成，现在可以点击「分析差异」进行比对。")
         except Exception as e:
-            self.lbl_pdf.config(text=f"{os.path.basename(self.pdf_path)}（OCR失败）", fg="red")
+            self.lbl_pdf.config(text=f"{self._pdf_name}（OCR失败）", fg="red")
             messagebox.showerror("OCR错误", f"解析PDF异常:\n{str(e)}")
 
     def analyze_diff(self):
@@ -245,16 +407,24 @@ class DocxPdfReviewer:
         img_idx = 0
 
         def show_page():
+            # 动态适配画布大小居中显示
+            canvas.update()
+            cw = max(canvas.winfo_width(), 100)
+            ch = max(canvas.winfo_height(), 100)
             img = self.cleaned_pdf_images[img_idx]
-            # 缩放至画布适配大小
-            w = int(img.width * 0.6)
-            h = int(img.height * 0.6)
+            scale = min(cw / img.width, ch / img.height, 1.0)
+            w = int(img.width * scale)
+            h = int(img.height * scale)
             tk_img = ImageTk.PhotoImage(img.resize((w, h), Image.Resampling.LANCZOS))
-            canvas.__dict__['_img'] = tk_img  # 保留引用防GC
+            canvas.__dict__['_img'] = tk_img
             canvas.delete("all")
-            canvas.create_image(0, 0, anchor=tk.NW, image=tk_img)
+            canvas.create_image(cw // 2, ch // 2, anchor=tk.CENTER, image=tk_img)
             canvas.config(scrollregion=canvas.bbox(tk.ALL))
-            lbl_page.config(text=f"第 {img_idx + 1} / {len(self.cleaned_pdf_images)} 页")
+            lbl_page.config(text=f"第 {img_idx + 1} / {len(self.cleaned_pdf_images)} 页 (缩放 {scale:.0%})")
+
+        def on_wheel(event):
+            canvas.yview_scroll(-1 if event.delta > 0 else 1, tk.UNITS)
+        canvas.bind("<MouseWheel>", on_wheel)
 
         def prev():
             nonlocal img_idx
