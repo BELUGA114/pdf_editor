@@ -99,10 +99,15 @@ class DocxPdfReviewer:
         self._pair_data = {}       # {index: {docx_text, pdf_text, doc_obj, cleaned, ...}}
         self.diff_blocks = []      # [{tag, old, new, accepted, block_id}, ...]
         self._docx_paragraphs = [] # 原始段落文本（用于合并回写）
+        self._docx_flat_positions = []  # flat → full_text 位置映射
+        self._saved_docx_source = ''    # 分析时的源文本（保证回写一致性）
         self._hover_popup = None   # 悬浮窗引用
         self._hover_block_id = -1  # 当前悬浮的块ID
 
         self._build_ui()
+
+        # 光标离开窗口时关闭悬浮窗
+        self.root.bind("<Leave>", self._on_root_leave)
 
         # 注册拖放（需在窗口实现后）
         self.root.update_idletasks()
@@ -145,7 +150,7 @@ class DocxPdfReviewer:
 
         self._try_folder_match()
 
-    def _set_status(self, text: str, color: str = None):
+    def _set_status(self, text: str, color: str | None = None):
         """更新操作栏状态标签"""
         self._status_lbl.config(text=text, fg=color or self.MUTED)
         self.root.update_idletasks()
@@ -529,6 +534,9 @@ class DocxPdfReviewer:
             'pdf_path': self.pdf_path,
             'pdf_name': self._pdf_name,
             'docx_paragraphs': self._docx_paragraphs,
+            'diff_blocks': self.diff_blocks,
+            'docx_flat_positions': self._docx_flat_positions,
+            'saved_docx_source': getattr(self, '_saved_docx_source', ''),
         }
 
     def _update_batch_nav(self):
@@ -633,22 +641,31 @@ class DocxPdfReviewer:
         self.pdf_path = data['pdf_path']
         self._pdf_name = data['pdf_name']
         self._docx_paragraphs = data.get('docx_paragraphs', [])
-        self.diff_blocks = []
+        self._docx_flat_positions = data.get('docx_flat_positions', [])
+        self._saved_docx_source = data.get('saved_docx_source', '')
+        saved_blocks = data.get('diff_blocks', [])
+        self.diff_blocks = saved_blocks
 
         self.lbl_docx.config(text=os.path.basename(self.docx_path), fg=self.PRIMARY)
         self.lbl_pdf.config(text=f"{self._pdf_name}（OCR完成）", fg="green")
         self._update_batch_nav()
 
-        # 如果差异已展示，自动刷新
-        if self.txt_diff.get("1.0", tk.END).strip():
+        # 已有已保存的差异块则直接渲染，否则重新分析
+        if saved_blocks:
+            self._hide_hover_popup()
+            self._render_diff()
+            self.txt_diff.bind("<Motion>", self._on_diff_motion)
+        elif self.txt_diff.get("1.0", tk.END).strip():
             self.analyze_diff(show_warning=False)
 
     def _nav_prev(self):
         if self._pair_index > 0:
+            self._save_pair_data(self._pair_index)
             self._switch_to_pair(self._pair_index - 1)
 
     def _nav_next(self):
         if self._pair_index < len(self._pairs) - 1:
+            self._save_pair_data(self._pair_index)
             self._switch_to_pair(self._pair_index + 1)
 
     def _select_docx_folder(self):
@@ -695,7 +712,7 @@ class DocxPdfReviewer:
                 lines.append(cleaned)
         return '\n'.join(lines)
 
-    def _load_pdf_path(self, path: str, pair_index: int = None):
+    def _load_pdf_path(self, path: str, pair_index: int | None = None):
         """从路径加载 PDF（支持拖放），包括去红头 + 裁剪 → OCR"""
         self.pdf_path = path
         self._pdf_name = os.path.basename(path)
@@ -905,7 +922,7 @@ class DocxPdfReviewer:
                     lines.append(text.strip())
         return lines
 
-    def _apply_crop_and_ocr(self, pair_index: int = None):
+    def _apply_crop_and_ocr(self, pair_index: int | None = None):
         """异步执行裁剪+OCR，不阻塞UI。pair_index 非 None 时表示批量模式"""
         self._set_status("正在准备OCR...", "orange")
 
@@ -988,7 +1005,9 @@ class DocxPdfReviewer:
                 ))
 
         # 构建位置映射表（flat → full_text 位置），用于后续合并
-        full_text = '\n'.join(self._docx_paragraphs)
+        # 使用与 docx_flat 相同的源文本，确保 save_synced_docx 的二次 diff 一致
+        full_text = self.docx_text
+        self._saved_docx_source = full_text
         self._docx_flat_positions = []
         for i, ch in enumerate(full_text):
             if self.compare_symbols.get():
@@ -1157,10 +1176,28 @@ class DocxPdfReviewer:
             self._hover_popup = None
             self._hover_block_id = -1
 
+    def _on_root_leave(self, event):
+        """光标离开窗口时关闭悬浮窗"""
+        if not self._hover_popup:
+            return
+        # 检查光标是否移到了悬浮窗上（悬浮窗是独立 Toplevel）
+        try:
+            mx = self.root.winfo_pointerx()
+            my = self.root.winfo_pointery()
+            px = self._hover_popup.winfo_rootx()
+            py = self._hover_popup.winfo_rooty()
+            pw = self._hover_popup.winfo_width()
+            ph = self._hover_popup.winfo_height()
+            if pw > 1 and ph > 1 and px <= mx <= px + pw and py <= my <= py + ph:
+                return  # 光标在悬浮窗上，不关闭
+        except tk.TclError:
+            pass
+        self._hide_hover_popup()
+
     def _do_toggle(self, block):
         """切换块状态并刷新"""
         block['accepted'] = not block['accepted']
-        self._hover_block_id = -1  # 强制刷新悬浮窗
+        self._hide_hover_popup()
         self._render_diff()
 
     def preview_cleaned_pdf(self):
@@ -1236,21 +1273,13 @@ class DocxPdfReviewer:
         tk.Button(nav_frame, text="下一页", command=next_page).pack(side=tk.LEFT, padx=5)
         show_page()
 
-    def save_synced_docx(self):
-        """导出：将已同意的更改并入 DOCX（未同意则保留原文）"""
+    def _merge_accepted_changes(self):
+        """将已同意的更改写入 self.doc_obj（原地修改），返回并入的更改数量"""
         if not self.doc_obj:
-            return
-        save_path = filedialog.asksaveasfilename(defaultextension=".docx",
-                                                   filetypes=[("Word Documents", "*.docx")])
-        if not save_path:
-            return
-
-        # 检查是否有已同意的更改
+            return 0
         accepted = [b for b in self.diff_blocks if b['accepted'] and b['tag'] != 'equal']
         if not accepted:
-            self.doc_obj.save(save_path)
-            self._alert("成功", "未同意任何更改，已导出原版文档。", "info")
-            return
+            return 0
 
         # 重建 accepted 目标 flat text
         target_parts = []
@@ -1267,24 +1296,10 @@ class DocxPdfReviewer:
                 target_parts.append(b['new'] if b['accepted'] else b['old'])
         target_flat = ''.join(target_parts)
 
-        # 重建原始 flat text 及位置映射
-        full_text = '\n'.join(self._docx_paragraphs)
-        original_flat = []
-        flat_to_full = []  # flat index → position in full_text
-        for i, ch in enumerate(full_text):
-            if self.compare_symbols.get():
-                if not ch.isspace():
-                    original_flat.append(ch)
-                    flat_to_full.append(i)
-            else:
-                if not ch.isspace() and (
-                    '一' <= ch <= '鿿' or '㐀' <= ch <= '䶿'
-                    or 'a' <= ch <= 'z' or 'A' <= ch <= 'Z'
-                    or '0' <= ch <= '9'
-                ):
-                    original_flat.append(ch)
-                    flat_to_full.append(i)
-        original_flat = ''.join(original_flat)
+        # 使用与 analyze_diff 相同的源文本和位置映射，保证一致性
+        full_text = getattr(self, '_saved_docx_source', self.docx_text)
+        flat_to_full = self._docx_flat_positions
+        original_flat = ''.join(full_text[i] for i in flat_to_full)
 
         # Diff original → target，得到 flat 空间的操作码
         matcher = difflib.SequenceMatcher(None, original_flat, target_flat)
@@ -1307,34 +1322,113 @@ class DocxPdfReviewer:
                 chars.insert(fs, ch)
         modified = ''.join(chars)
 
-        # 按段落边界回写到 DOCX
+        # 按段落边界回写到 DOCX（严格保留每个 run 的原始字体/格式）
         new_paras = modified.split('\n')
         body_paras = [p for p in self.doc_obj.paragraphs
                       if not self._is_red_header(p) and p.text.strip()]
         for i, para_text in enumerate(new_paras):
             if i < len(body_paras):
                 p = body_paras[i]
-                if p.runs:
-                    p.runs[0].text = para_text
-                    for r in p.runs[1:]:
-                        r.text = ''
+                if p.text == para_text:
+                    continue  # 未改动，保留原有 run 结构
+                runs = p.runs
+                if not runs:
+                    p.add_run(para_text)
+                elif len(runs) == 1:
+                    runs[0].text = para_text
                 else:
-                    p.text = para_text
+                    # 多个 run：按原始比例分配文字，保留每个 run 的格式
+                    old_lens = [len(r.text) for r in runs]
+                    old_total = sum(old_lens)
+                    new_len = len(para_text)
+                    pos = 0
+                    for j, r in enumerate(runs):
+                        if j == len(runs) - 1:
+                            r.text = para_text[pos:]
+                        else:
+                            if old_total > 0:
+                                ratio = old_lens[j] / old_total
+                                count = round(new_len * ratio)
+                            else:
+                                count = 0
+                            # 为后续 run 保留至少 1 个字符
+                            remaining_runs = len(runs) - j - 1
+                            count = max(count, 0)
+                            count = min(count, new_len - pos - remaining_runs)
+                            r.text = para_text[pos:pos + count] if count > 0 else ''
+                            pos += count
             else:
-                # 新增段落
-                new_p = body_paras[-1].insert_paragraph_after(para_text)
+                new_p = body_paras[-1].insert_paragraph_after(para_text)  # type: ignore[attr-defined]
                 if new_p.runs:
                     new_p.runs[0].text = para_text
-        # 多余的原段落清空
         for p in body_paras[len(new_paras):]:
-            p.text = ''
+            # 多余的原段落：逐个 run 清空（保留格式占位）
+            for r in p.runs:
+                r.text = ''
 
+        return len(accepted)
+
+    def save_synced_docx(self):
+        """导出：将已同意的更改并入 DOCX（未同意则保留原文）"""
+        if not self.doc_obj:
+            return
+        save_path = filedialog.asksaveasfilename(defaultextension=".docx",
+                                                       filetypes=[("Word Documents", "*.docx")])
+        if not save_path:
+            return
+
+        count = self._merge_accepted_changes()
         self.doc_obj.save(save_path)
-        self._alert("成功",
-            f"已并入 {len(accepted)} 处更改并导出文档。", "info")
+        if count:
+            self._alert("成功", f"已并入 {count} 处更改并导出文档。", "info")
+        else:
+            self._alert("成功", "未同意任何更改，已导出原版文档。", "info")
+
+    def _is_red_border(self, paragraph):
+        """检查段落是否有红色边框线（红头文件的红色横线）"""
+        try:
+            from docx.oxml.ns import qn
+            pPr = paragraph._element.find(qn('w:pPr'))
+            if pPr is not None:
+                pBdr = pPr.find(qn('w:pBdr'))
+                if pBdr is not None:
+                    for tag in (qn('w:bottom'), qn('w:top')):
+                        border = pBdr.find(tag)
+                        if border is not None:
+                            color = border.get(qn('w:color'))
+                            if color and color != 'auto' and len(color) >= 6:
+                                r = int(color[0:2], 16)
+                                g = int(color[2:4], 16)
+                                b = int(color[4:6], 16)
+                                if r > 200 and g < 60 and b < 60:
+                                    return True
+        except Exception:
+            pass
+        return False
+
+    def _remove_red_border(self, paragraph):
+        """移除段落的红色边框线"""
+        try:
+            from docx.oxml.ns import qn
+            pPr = paragraph._element.find(qn('w:pPr'))
+            if pPr is not None:
+                pBdr = pPr.find(qn('w:pBdr'))
+                if pBdr is not None:
+                    for tag in (qn('w:bottom'), qn('w:top')):
+                        border = pBdr.find(tag)
+                        if border is not None:
+                            color = border.get(qn('w:color'))
+                            if color and color != 'auto' and len(color) >= 6:
+                                r = int(color[0:2], 16)
+                                g = int(color[2:4], 16)
+                                b = int(color[4:6], 16)
+                                if r > 200 and g < 60 and b < 60:
+                                    pBdr.remove(border)
+        except Exception:
+            pass
 
     def save_dered_docx(self):
-        """自动去红头：扫描前部段落，检测红色字体并清除"""
+        """导出：先并入已同意的更改，再去红头（清除红色字体段落和红色横线，不改变其余格式）"""
         if not self.doc_obj:
             return
 
@@ -1342,35 +1436,41 @@ class DocxPdfReviewer:
         if not save_path:
             return
 
-        # 创建一个用于修改的副本对象
-        export_doc = Document(self.docx_path)
+        # 先并入已同意的更改
+        self._merge_accepted_changes()
 
-        # 自动化去红头策略：
-        # 1. 扫描前5个段落。
-        # 2. 如果某个段落中存在文字颜色为红色（RGB: >200, <50, <50），
-        #    或者包含政府公文红头常见字（如"文件"），则判定为红头，将其内容清空。
-        paragraphs_to_check = export_doc.paragraphs[:6]
+        # 扫描前6个段落，检测并清除红头元素
+        paragraphs_to_check = self.doc_obj.paragraphs[:6]
 
         for p in paragraphs_to_check:
+            # 检查红色文字
             is_red_head = False
-            # 检查段落中的每个文字运行块（Run）的颜色
             for run in p.runs:
                 if run.font.color and run.font.color.rgb:
                     r, g, b = run.font.color.rgb
-                    if r > 200 and g < 60 and b < 60:  # 判定为红色系字体
+                    if r > 200 and g < 60 and b < 60:
                         is_red_head = True
                         break
 
-            # 如果命中了红头特征，清除该段落文本（保留位置占位，不破坏后续排版结构）
+            # 命中了红头特征（红色文字或包含"文件"字样），清除文本但保留格式
             if is_red_head or "文件" in p.text:
-                p.text = ""
-                # 连带清除可能遗留的下划线/边框属性
+                # 逐个 run 清空文字（保留字体/大小等格式信息）
+                for run in p.runs:
+                    run.text = ''
                 p.paragraph_format.space_before = 0
                 p.paragraph_format.space_after = 0
 
+            # 清除红色横线（段落边框）
+            if self._is_red_border(p):
+                self._remove_red_border(p)
+                # 如果该段落只有边框没有文字，清空其内容
+                if not p.text.strip():
+                    for run in p.runs:
+                        run.text = ''
+
         try:
-            export_doc.save(save_path)
-            self._alert("成功", "自动去红头版Docx文档已成功导出。", "info")
+            self.doc_obj.save(save_path)
+            self._alert("成功", "已并入更改并去除红头，文档已导出。", "info")
         except Exception as e:
             self._alert("错误", f"保存失败: {str(e)}", "error")
 
