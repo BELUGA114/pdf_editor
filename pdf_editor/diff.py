@@ -7,6 +7,55 @@ from .config import _BaseMixin
 class DiffMixin(_BaseMixin):
     """差异分析 — difflib 比对、Git 风格渲染、悬浮操作窗"""
 
+    def _on_toggle_symbols(self):
+        """切换比对符号前，若有已同意的更改则弹窗确认"""
+        # Checkbutton 已自动切换了变量值，先恢复
+        new_val = self.compare_symbols.get()
+        self.compare_symbols.set(not new_val)
+        approved = sum(1 for b in self.diff_blocks if b['accepted'] and b['tag'] != 'equal')
+        if approved > 0:
+            win = tk.Toplevel(self.root)
+            win.withdraw()
+            win.title("确认切换")
+            win.resizable(False, False)
+            win.transient(self.root)
+            win.grab_set()
+            f = tk.Frame(win, padx=20, pady=15, bg="white")
+            f.pack(fill=tk.BOTH, expand=True)
+            tk.Label(f, text=f"当前有 {approved} 处已同意的更改。",
+                     font=("Microsoft YaHei UI", 10), bg="white").pack(pady=(0, 5))
+            tk.Label(f, text="切换比对符号将重新分析差异，\n"
+                            "已同意的更改可能被重置。确定继续？",
+                     font=("Microsoft YaHei UI", 10, "bold"), bg="white").pack(pady=(0, 12))
+            btn_frame = tk.Frame(f, bg="white")
+            btn_frame.pack()
+            tk.Button(btn_frame, text="继续切换",
+                      command=lambda: self._do_toggle_symbols(win, new_val),
+                      bg=self.PRIMARY, fg="white", relief=tk.FLAT,
+                      padx=16, pady=6, cursor="hand2",
+                      font=("Microsoft YaHei UI", 10)).pack(side=tk.LEFT, padx=4)
+            tk.Button(btn_frame, text="取消",
+                      command=win.destroy,
+                      bg="#6c757d", fg="white", relief=tk.FLAT,
+                      padx=16, pady=6, cursor="hand2",
+                      font=("Microsoft YaHei UI", 10)).pack(side=tk.LEFT, padx=4)
+            win.bind("<Escape>", lambda _: win.destroy())
+            win.update_idletasks()
+            pw, ph = self.root.winfo_width(), self.root.winfo_height()
+            px, py = self.root.winfo_x(), self.root.winfo_y()
+            ww, wh = win.winfo_width(), win.winfo_height()
+            win.geometry(f"+{px + (pw - ww) // 2}+{py + (ph - wh) // 2}")
+            win.deiconify()
+            win.wait_window()
+        else:
+            self.compare_symbols.set(new_val)
+            self.analyze_diff(show_warning=False)
+
+    def _do_toggle_symbols(self, win, new_val):
+        win.destroy()
+        self.compare_symbols.set(new_val)
+        self.analyze_diff(show_warning=False)
+
     def analyze_diff(self, show_warning=True):
         if not self.docx_text or not self.pdf_text:
             if show_warning:
@@ -93,6 +142,7 @@ class DiffMixin(_BaseMixin):
         self._hide_hover_popup()
         self._render_diff()
         self.txt_diff.bind("<Motion>", self._on_diff_motion)
+        self._update_button_states()
 
         if show_warning:
             self._alert("分析完成",
@@ -103,6 +153,7 @@ class DiffMixin(_BaseMixin):
 
     def _render_diff(self):
         """根据 self.diff_blocks 渲染差异文本"""
+        self.txt_diff.config(state=tk.NORMAL)
         # 保存第一可见行的行号
         try:
             top_line = int(str(self.txt_diff.index("@0,0")).split(".")[0])
@@ -144,6 +195,14 @@ class DiffMixin(_BaseMixin):
         # 恢复滚动位置
         self.txt_diff.update_idletasks()
         self.txt_diff.see(f"{top_line}.0")
+
+        # 更新提示标签
+        if self._diff_hint:
+            approved = sum(1 for b in self.diff_blocks if b['accepted'] and b['tag'] != 'equal')
+            total = sum(1 for b in self.diff_blocks if b['tag'] != 'equal')
+            self._diff_hint.config(
+                text=f"鼠标悬停更改行可操作  |  红底=删除  绿底=新增  |  "
+                     f"浅色=已忽略  深色=已同意  |  已同意 {approved}/{total} 处更改")
 
 
 
@@ -264,4 +323,5 @@ class DiffMixin(_BaseMixin):
         block['accepted'] = not block['accepted']
         self._hide_hover_popup()
         self._render_diff()
+        self._update_button_states()
 

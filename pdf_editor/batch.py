@@ -215,6 +215,7 @@ class BatchMixin(_BaseMixin):
             self._hide_hover_popup()
             self._render_diff()
             self.txt_diff.bind("<Motion>", self._on_diff_motion)
+            self._update_button_states()
         elif self.txt_diff.get("1.0", tk.END).strip():
             self.analyze_diff(show_warning=False)
 

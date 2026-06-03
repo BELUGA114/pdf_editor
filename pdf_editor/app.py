@@ -83,39 +83,51 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
         grid_frame.columnconfigure(0, weight=1)
         grid_frame.columnconfigure(1, weight=1)
 
+        tk.Label(grid_frame, text="单文件比对",
+                 font=("Microsoft YaHei UI", 8, "bold"),
+                 bg=self.BG, fg=self.MUTED).grid(row=0, column=0, columnspan=2,
+                                                  sticky=tk.W, pady=(0, 2))
+
         docx_card, self.lbl_docx = self._make_drop_zone(
-            grid_frame, "拖入 DOCX", "原始 Word 文档（基准）", "📄",
+            grid_frame, "拖入 DOCX", "原始 Word 文档（基准）", "",
             self.load_docx)
-        docx_card.grid(row=0, column=0, sticky="nsew", padx=(0, 4), pady=(0, 4))
+        docx_card.grid(row=1, column=0, sticky="nsew", padx=(0, 4), pady=(0, 4))
 
         pdf_card, self.lbl_pdf = self._make_drop_zone(
-            grid_frame, "拖入 PDF", "扫描版 PDF（对比件）", "📑",
+            grid_frame, "拖入 PDF", "扫描版 PDF（对比件）", "",
             self.load_pdf)
-        pdf_card.grid(row=0, column=1, sticky="nsew", padx=(4, 0), pady=(0, 4))
+        pdf_card.grid(row=1, column=1, sticky="nsew", padx=(4, 0), pady=(0, 4))
+
+        tk.Label(grid_frame, text="批量比对 — 分别选择存放 DOCX 和 PDF 的文件夹，自动匹配同名文件对",
+                 font=("Microsoft YaHei UI", 8, "bold"),
+                 bg=self.BG, fg=self.MUTED).grid(row=2, column=0, columnspan=2,
+                                                  sticky=tk.W, pady=(10, 2))
 
         docx_folder_card, self.lbl_docx_folder = self._make_drop_zone(
-            grid_frame, "选择 DOCX 文件夹", "批量 Word 文档目录", "📁",
+            grid_frame, "选择 DOCX 文件夹", "批量 Word 文档目录", "",
             self._select_docx_folder)
-        docx_folder_card.grid(row=1, column=0, sticky="nsew", padx=(0, 4), pady=(4, 0))
+        docx_folder_card.grid(row=3, column=0, sticky="nsew", padx=(0, 4), pady=(4, 0))
 
         pdf_folder_card, self.lbl_pdf_folder = self._make_drop_zone(
-            grid_frame, "选择 PDF 文件夹", "批量 PDF 文件目录", "📂",
+            grid_frame, "选择 PDF 文件夹", "批量 PDF 文件目录", "",
             self._select_pdf_folder)
-        pdf_folder_card.grid(row=1, column=1, sticky="nsew", padx=(4, 0), pady=(4, 0))
+        pdf_folder_card.grid(row=3, column=1, sticky="nsew", padx=(4, 0), pady=(4, 0))
 
         # ---- 操作栏 ----
         action_frame = tk.Frame(self.root, bg=self.BG, padx=20, pady=10)
         action_frame.pack(fill=tk.X)
 
-        self._make_btn(action_frame, "分析差异 (Git 模式)",
-                       self.analyze_diff).pack(side=tk.LEFT, padx=(0, 8))
+        self._btn_analyze = self._make_btn(action_frame, "分析差异 (Git 模式)",
+                       self.analyze_diff)
+        self._btn_analyze.pack(side=tk.LEFT, padx=(0, 8))
         tk.Checkbutton(action_frame, text="比对符号", variable=self.compare_symbols,
-                       command=lambda: self.analyze_diff(show_warning=False),
+                       command=self._on_toggle_symbols,
                        bg=self.BG, font=("Microsoft YaHei UI", 9)).pack(side=tk.LEFT, padx=8)
         tk.Checkbutton(action_frame, text="提示弹窗", variable=self.show_info,
                        bg=self.BG, font=("Microsoft YaHei UI", 9)).pack(side=tk.LEFT)
-        self._make_btn(action_frame, "预览去红头 PDF", self.preview_cleaned_pdf,
-                       bg="#e8a838").pack(side=tk.LEFT, padx=8)
+        self._btn_preview = self._make_btn(action_frame, "预览去红头 PDF",
+                       self.preview_cleaned_pdf, bg="#e8a838")
+        self._btn_preview.pack(side=tk.LEFT, padx=8)
 
         self._status_lbl = tk.Label(action_frame, text="",
                                     font=("Microsoft YaHei UI", 9),
@@ -125,12 +137,12 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
         # 导出按钮（右侧）
         export_frame = tk.Frame(action_frame, bg=self.BG)
         export_frame.pack(side=tk.RIGHT)
-        self._make_btn(export_frame, "导出：同步更新版 Docx", self.save_synced_docx,
-                       bg=self.SUCCESS, font=("Microsoft YaHei UI", 9)).pack(
-            side=tk.LEFT, padx=4)
-        self._make_btn(export_frame, "导出：自动去红头版 Docx", self.save_dered_docx,
-                       bg="#e8a838", font=("Microsoft YaHei UI", 9)).pack(
-            side=tk.LEFT, padx=4)
+        self._btn_sync = self._make_btn(export_frame, "导出：同步更新版 Docx",
+                       self.save_synced_docx, bg=self.SUCCESS, font=("Microsoft YaHei UI", 9))
+        self._btn_sync.pack(side=tk.LEFT, padx=4)
+        self._btn_dered = self._make_btn(export_frame, "导出：自动去红头版 Docx",
+                       self.save_dered_docx, bg="#e8a838", font=("Microsoft YaHei UI", 9))
+        self._btn_dered.pack(side=tk.LEFT, padx=4)
 
         # ---- 批量导航栏（初始隐藏） ----
         self._batch_nav_frame = tk.Frame(self.root, bg=self.BG)
@@ -150,10 +162,11 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
         mid_frame = tk.Frame(self.root, padx=20, pady=15, bg=self.BG)
         mid_frame.pack(fill=tk.BOTH, expand=True)
 
-        tk.Label(mid_frame,
+        self._diff_hint = tk.Label(mid_frame,
                  text="鼠标悬停更改行可操作  |  红底=删除  绿底=新增  |  浅色=已忽略  深色=已同意",
                  font=("Microsoft YaHei UI", 9),
-                 bg=self.BG, fg=self.MUTED).pack(anchor=tk.W, pady=(0, 6))
+                 bg=self.BG, fg=self.MUTED)
+        self._diff_hint.pack(anchor=tk.W, pady=(0, 6))
 
         text_frame = tk.Frame(mid_frame, bg=self.CARD_BG,
                               highlightbackground=self.BORDER, highlightthickness=1)
@@ -166,6 +179,8 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
                                 bg=self.CARD_BG, fg=self.TEXT, bd=0,
                                 padx=12, pady=10)
         self.txt_diff.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self._show_welcome()
 
         scroll = tk.Scrollbar(text_frame, command=self.txt_diff.yview, bg=self.BG)
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
@@ -232,6 +247,38 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
         self.root.update_idletasks()
 
 
+
+    def _show_welcome(self):
+        """在差异展示区显示新手引导"""
+        self.txt_diff.delete("1.0", tk.END)
+        self.txt_diff.insert(tk.END, "使用指南\n", "header")
+        self.txt_diff.insert(tk.END, "\n")
+        self.txt_diff.insert(tk.END, "  1. 在上方拖入或点击选择 DOCX（原始 Word 文档）\n")
+        self.txt_diff.insert(tk.END, "  2. 拖入或点击选择 PDF（扫描版对比件）\n")
+        self.txt_diff.insert(tk.END, "  3. 裁剪 PDF 中需忽略的区域（如页码、水印）\n")
+        self.txt_diff.insert(tk.END, "  4. 点击「分析差异」查看 DOCX 与 PDF 的文字差异\n")
+        self.txt_diff.insert(tk.END, "  5. 鼠标悬停在红色/绿色行上可逐条同意或忽略更改\n")
+        self.txt_diff.insert(tk.END, "  6. 点击「导出」将已同意的更改写入新 DOCX\n")
+        self.txt_diff.insert(tk.END, "\n")
+        self.txt_diff.insert(tk.END, "批量模式：在下方两个文件夹区分别选择 DOCX 和 PDF 目录，\n")
+        self.txt_diff.insert(tk.END, "程序会自动匹配同名文件对。\n")
+        self.txt_diff.config(state=tk.DISABLED)
+        self._update_button_states()
+
+    def _update_button_states(self):
+        """根据当前加载状态切换按钮的可用外观"""
+        has_docx = bool(self.docx_text)
+        has_pdf = bool(self.pdf_text)
+        has_diff = bool(self.diff_blocks)
+        has_doc_obj = self.doc_obj is not None
+        has_pdf_images = bool(self.cleaned_pdf_images)
+        approved = sum(1 for b in self.diff_blocks if b['accepted'] and b['tag'] != 'equal')
+
+        # 用背景色区分可用/不可用（避免 tkinter disabled 状态下文字变灰看不清）
+        self._set_btn_available(self._btn_analyze, has_docx and has_pdf)
+        self._set_btn_available(self._btn_preview, has_pdf_images)
+        self._set_btn_available(self._btn_sync, has_doc_obj and has_diff and approved > 0)
+        self._set_btn_available(self._btn_dered, has_doc_obj)
 
     def _alert(self, title: str, message: str, level: str = "info"):
         """无提示音的消息弹窗（替代 messagebox）"""
@@ -321,11 +368,23 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
 
     def _make_btn(self, parent, text: str, command, bg=None, **kw):
         """统一样式的按钮"""
+        active_bg = bg or self.PRIMARY
         b = tk.Button(parent, text=text, command=command,
-                      bg=bg or self.PRIMARY, fg="white",
+                      bg=active_bg, fg="white",
                       relief=tk.FLAT, padx=14, pady=6,
                       cursor="hand2", **kw)
+        if not hasattr(self, '_btn_colors'):
+            self._btn_colors = {}
+        self._btn_colors[id(b)] = active_bg
         return b
+
+    def _set_btn_available(self, btn, available: bool):
+        """切换按钮可用状态的外观，避免 tkinter DISABLED 让文字变灰"""
+        active_bg = self._btn_colors.get(id(btn), self.PRIMARY)
+        if available:
+            btn.config(bg=active_bg, fg="white", cursor="hand2")
+        else:
+            btn.config(bg="#b0b8c0", fg="#e8e8e8", cursor="arrow")
 
 
 

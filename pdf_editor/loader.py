@@ -54,6 +54,7 @@ class LoaderMixin(_BaseMixin):
         self._docx_flat_positions = []
         self._docx_flat_to_raw = []
         self._saved_docx_source = ''
+        self._update_button_states()
 
 
 

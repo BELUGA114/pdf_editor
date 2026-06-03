@@ -123,6 +123,8 @@ class ExportMixin(_BaseMixin):
 
         count = self._merge_accepted_changes()
         self.doc_obj.save(save_path)
+        self._update_button_states()
+        self._diff_hint.config(text="导出完成 — 可重新加载文档继续比对")
         if count:
             self._alert("成功", f"已并入 {count} 处更改并导出文档。", "info")
         else:
@@ -220,6 +222,8 @@ class ExportMixin(_BaseMixin):
 
         try:
             self.doc_obj.save(save_path)
+            self._update_button_states()
+            self._diff_hint.config(text="导出完成 — 可重新加载文档继续比对")
             self._alert("成功", "已并入更改并去除红头，文档已导出。", "info")
         except Exception as e:
             self._alert("错误", f"保存失败: {str(e)}", "error")

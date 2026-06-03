@@ -75,6 +75,7 @@ class OCRMixin(_BaseMixin):
                 self.pdf_text = self._normalize_text(raw_pdf_text)
                 self.lbl_pdf.config(text=f"{self._pdf_name}（OCR完成）", fg="green")
                 self._set_status("")
+                self._update_button_states()
                 if pair_index is not None:
                     self._on_pair_ocr_done(pair_index)
                 else:
@@ -102,6 +103,11 @@ class OCRMixin(_BaseMixin):
             self._apply_crop_and_ocr(pair_index=pi)
         win.protocol("WM_DELETE_WINDOW", on_close)
 
+        instruct_lbl = tk.Label(win,
+            text="操作说明：在 PDF 图像上按住鼠标左键拖拽，框选需要忽略的区域（如页码、水印、红头标题）。"
+                 "松开鼠标后区域锁定。可框选多个区域，点击「撤销上一个区域」可退回。",
+            font=("Microsoft YaHei UI", 9), fg="#555555", wraplength=860, justify=tk.LEFT)
+        instruct_lbl.pack(pady=(8, 0))
         info_lbl = tk.Label(win, text="", fg="blue")
         info_lbl.pack(pady=5)
 
