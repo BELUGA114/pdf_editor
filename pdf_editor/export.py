@@ -16,7 +16,7 @@ class ExportMixin(_BaseMixin):
         if not accepted:
             return 0
 
-        # 重建 accepted 目标 flat text
+        # 重建 accepted 目标 flat text（归一化空间）
         target_parts = []
         for b in self.diff_blocks:
             if b['tag'] == 'equal':
@@ -31,33 +31,35 @@ class ExportMixin(_BaseMixin):
                 target_parts.append(b['new'] if b['accepted'] else b['old'])
         target_flat = ''.join(target_parts)
 
-        # 使用与 analyze_diff 相同的源文本和位置映射，保证一致性
+        # 在归一化空间做二次 diff，找到编辑操作
         full_text = getattr(self, '_saved_docx_source', self.docx_text)
         flat_to_full = self._docx_flat_positions
         original_flat = ''.join(full_text[i] for i in flat_to_full)
 
-        # Diff original → target，得到 flat 空间的操作码
         matcher = difflib.SequenceMatcher(None, original_flat, target_flat)
-        edits = []  # [(full_start, delete_len, insert_str), ...]
+        edits = []  # [(raw_start, raw_delete_len, insert_str), ...]
+        raw_flat = self._docx_flat_to_raw
+        raw_full = self._docx_text_raw
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
             if tag == 'equal':
                 continue
-            fs = flat_to_full[i1] if i1 < len(flat_to_full) else len(full_text)
-            fe = flat_to_full[i2] if i2 < len(flat_to_full) else len(full_text)
-            dlen = fe - fs
+            # 将 flat 空间的编辑位置映射到原始（未归一化）文本空间
+            raw_start = raw_flat[i1] if i1 < len(raw_flat) else len(raw_full)
+            raw_end = raw_flat[i2] if i2 < len(raw_flat) else len(raw_full)
+            raw_dlen = raw_end - raw_start
             insert = target_flat[j1:j2] if tag in ('insert', 'replace') else ''
-            edits.append((fs, dlen, insert))
+            edits.append((raw_start, raw_dlen, insert))
 
-        # 逆序应用编辑到 full_text（避免位置偏移）
+        # 逆序应用编辑到原始文本（保留全角符号、多空格和原始格式）
         edits.sort(key=lambda x: x[0], reverse=True)
-        chars = list(full_text)
-        for fs, dlen, insert in edits:
-            del chars[fs:fs + dlen]
+        chars = list(raw_full)
+        for start, dlen, insert in edits:
+            del chars[start:start + dlen]
             for ch in reversed(insert):
-                chars.insert(fs, ch)
+                chars.insert(start, ch)
         modified = ''.join(chars)
 
-        # 按段落边界回写到 DOCX（严格保留每个 run 的原始字体/格式）
+        # 按段落边界回写到 DOCX
         new_paras = modified.split('\n')
         body_paras = [p for p in self.doc_obj.paragraphs
                       if not self._is_red_header(p) and p.text.strip()]
@@ -65,14 +67,13 @@ class ExportMixin(_BaseMixin):
             if i < len(body_paras):
                 p = body_paras[i]
                 if p.text == para_text:
-                    continue  # 未改动，保留原有 run 结构
+                    continue
                 runs = p.runs
                 if not runs:
                     p.add_run(para_text)
                 elif len(runs) == 1:
                     runs[0].text = para_text
                 else:
-                    # 多个 run：按原始比例分配文字，保留每个 run 的格式
                     old_lens = [len(r.text) for r in runs]
                     old_total = sum(old_lens)
                     new_len = len(para_text)
@@ -86,7 +87,6 @@ class ExportMixin(_BaseMixin):
                                 count = round(new_len * ratio)
                             else:
                                 count = 0
-                            # 为后续 run 保留至少 1 个字符
                             remaining_runs = len(runs) - j - 1
                             count = max(count, 0)
                             count = min(count, new_len - pos - remaining_runs)
@@ -97,7 +97,6 @@ class ExportMixin(_BaseMixin):
                 if new_p.runs:
                     new_p.runs[0].text = para_text
         for p in body_paras[len(new_paras):]:
-            # 多余的原段落：逐个 run 清空（保留格式占位）
             for r in p.runs:
                 r.text = ''
 

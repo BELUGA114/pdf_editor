@@ -49,6 +49,22 @@ class DiffMixin(_BaseMixin):
                 ):
                     self._docx_flat_positions.append(i)
 
+        # 同时构建原始（未归一化）文本的位置映射，导出时用原始文本写回
+        raw_full = '\n'.join(self._docx_paragraphs)
+        self._docx_text_raw = raw_full
+        self._docx_flat_to_raw = []
+        for i, ch in enumerate(raw_full):
+            if self.compare_symbols.get():
+                if not ch.isspace():
+                    self._docx_flat_to_raw.append(i)
+            else:
+                if not ch.isspace() and (
+                    '一' <= ch <= '鿿' or '㐀' <= ch <= '䶿'
+                    or 'a' <= ch <= 'z' or 'A' <= ch <= 'Z'
+                    or '0' <= ch <= '9'
+                ):
+                    self._docx_flat_to_raw.append(i)
+
         matcher = difflib.SequenceMatcher(None, docx_flat, pdf_flat)
         self.diff_blocks = []
         block_id = 0

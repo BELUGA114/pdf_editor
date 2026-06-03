@@ -33,7 +33,9 @@ class _BaseMixin:
     diff_blocks: list
     _docx_paragraphs: list
     _docx_flat_positions: list
+    _docx_flat_to_raw: list
     _saved_docx_source: str
+    _docx_text_raw: str
     _saved_sel: str | None
     _hover_popup: tk.Toplevel | None
     _hover_block_id: int

@@ -43,6 +43,7 @@ class LoaderMixin(_BaseMixin):
                 body_paragraphs.append(p.text)
                 self._docx_paragraphs.append(p.text)
         raw_text = "\n".join(body_paragraphs)
+        self._docx_text_raw = raw_text
         self.docx_text = self._normalize_text(raw_text)
         self.diff_blocks = []
 

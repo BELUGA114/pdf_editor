@@ -82,7 +82,9 @@ class BatchMixin(_BaseMixin):
             'docx_paragraphs': self._docx_paragraphs,
             'diff_blocks': self.diff_blocks,
             'docx_flat_positions': self._docx_flat_positions,
+            'docx_flat_to_raw': getattr(self, '_docx_flat_to_raw', []),
             'saved_docx_source': getattr(self, '_saved_docx_source', ''),
+            'docx_text_raw': getattr(self, '_docx_text_raw', ''),
         }
 
 
@@ -145,6 +147,7 @@ class BatchMixin(_BaseMixin):
                     'pdf_path': pdf_path,
                     'pdf_name': os.path.basename(pdf_path),
                     'docx_paragraphs': paras,
+                    'docx_text_raw': '\n'.join(paras),
                 }
             except Exception as e:
                 self._pair_data[index] = {'error': str(e)}
@@ -196,7 +199,9 @@ class BatchMixin(_BaseMixin):
         self._pdf_name = data['pdf_name']
         self._docx_paragraphs = data.get('docx_paragraphs', [])
         self._docx_flat_positions = data.get('docx_flat_positions', [])
+        self._docx_flat_to_raw = data.get('docx_flat_to_raw', [])
         self._saved_docx_source = data.get('saved_docx_source', '')
+        self._docx_text_raw = data.get('docx_text_raw', '')
         saved_blocks = data.get('diff_blocks', [])
         self.diff_blocks = saved_blocks
 
