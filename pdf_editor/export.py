@@ -63,6 +63,8 @@ class ExportMixin(_BaseMixin):
         new_paras = modified.split('\n')
         body_paras = [p for p in self.doc_obj.paragraphs
                       if not self._is_red_header(p) and p.text.strip()]
+        if not body_paras:
+            return len(accepted)
         for i, para_text in enumerate(new_paras):
             if i < len(body_paras):
                 p = body_paras[i]
@@ -99,6 +101,12 @@ class ExportMixin(_BaseMixin):
         for p in body_paras[len(new_paras):]:
             for r in p.runs:
                 r.text = ''
+
+        # 防止重复应用：清除 diff_blocks 及相关状态
+        self.diff_blocks = []
+        self._docx_flat_positions = []
+        self._docx_flat_to_raw = []
+        self._saved_docx_source = ''
 
         return len(accepted)
 

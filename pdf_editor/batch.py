@@ -50,6 +50,7 @@ class BatchMixin(_BaseMixin):
                   padx=16, pady=6, cursor="hand2",
                   font=("Microsoft YaHei UI", 10)).pack(side=tk.LEFT, padx=4)
         win.bind("<Escape>", lambda _: self._on_crop_choice(win, 'reuse'))
+        win.protocol("WM_DELETE_WINDOW", lambda: self._on_crop_choice(win, 'reuse'))
         win.update_idletasks()
         pw, ph = self.root.winfo_width(), self.root.winfo_height()
         px, py = self.root.winfo_x(), self.root.winfo_y()

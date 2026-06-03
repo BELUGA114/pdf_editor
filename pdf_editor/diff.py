@@ -65,6 +65,12 @@ class DiffMixin(_BaseMixin):
                 ):
                     self._docx_flat_to_raw.append(i)
 
+        # 保留之前已同意的块状态（切换比对符号等场景下避免丢失审核决定）
+        prev_accepted = {}
+        for b in getattr(self, 'diff_blocks', []) or []:
+            if b.get('accepted') and b['tag'] != 'equal':
+                prev_accepted[(b['tag'], b['old'], b['new'])] = True
+
         matcher = difflib.SequenceMatcher(None, docx_flat, pdf_flat)
         self.diff_blocks = []
         block_id = 0
@@ -77,9 +83,10 @@ class DiffMixin(_BaseMixin):
                     'accepted': True, 'id': block_id,
                 })
             elif tag in ('delete', 'insert', 'replace'):
+                was_accepted = prev_accepted.get((tag, old_text, new_text), False)
                 self.diff_blocks.append({
                     'tag': tag, 'old': old_text, 'new': new_text,
-                    'accepted': False, 'id': block_id,
+                    'accepted': was_accepted, 'id': block_id,
                 })
             block_id += 1
 

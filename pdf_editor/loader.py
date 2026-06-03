@@ -31,12 +31,17 @@ class LoaderMixin(_BaseMixin):
             self._batch_nav_frame.pack_forget()
             self._pair_data = {}
             self._pair_index = -1
+        try:
+            doc = Document(path)
+        except Exception as e:
+            self._alert("错误", f"无法打开 DOCX 文件:\n{str(e)}", "error")
+            return
         self.docx_path = path
         self.lbl_docx.config(text=os.path.basename(path), fg=self.PRIMARY)
-        self.doc_obj = Document(path)
+        self.doc_obj = doc
         body_paragraphs = []
         self._docx_paragraphs = []
-        for p in self.doc_obj.paragraphs:
+        for p in doc.paragraphs:
             if self._is_red_header(p):
                 continue
             if p.text.strip():
@@ -46,6 +51,9 @@ class LoaderMixin(_BaseMixin):
         self._docx_text_raw = raw_text
         self.docx_text = self._normalize_text(raw_text)
         self.diff_blocks = []
+        self._docx_flat_positions = []
+        self._docx_flat_to_raw = []
+        self._saved_docx_source = ''
 
 
 

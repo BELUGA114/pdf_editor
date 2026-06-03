@@ -94,6 +94,14 @@ class OCRMixin(_BaseMixin):
         win.title("裁剪PDF（框选要丢弃的区域，可多选）")
         win.geometry("900x700")
 
+        def on_close():
+            """X 关闭窗口视为跳过剩余裁剪步骤"""
+            self.discard_boxes[step] = []
+            win.destroy()
+            pi = getattr(self, '_current_pair_index', None)
+            self._apply_crop_and_ocr(pair_index=pi)
+        win.protocol("WM_DELETE_WINDOW", on_close)
+
         info_lbl = tk.Label(win, text="", fg="blue")
         info_lbl.pack(pady=5)
 
@@ -149,9 +157,14 @@ class OCRMixin(_BaseMixin):
             count = len(self.discard_boxes[step])
             suffix = f"（已选 {count} 个区域）" if count else ""
             if step == 0:
-                info_lbl.config(text=f"第1步：框选第1页中要丢弃的区域{suffix}（单数页使用此位置）")
-                btn_next.config(text="保存并设置第2页 →", state=tk.NORMAL)
-                btn_skip.config(text="跳过此步（不擦除单数页）", state=tk.NORMAL)
+                if total_pages > 1:
+                    info_lbl.config(text=f"第1步：框选第1页中要丢弃的区域{suffix}（单数页使用此位置）")
+                    btn_next.config(text="保存并设置第2页 →", state=tk.NORMAL)
+                    btn_skip.config(text="跳过此步（不擦除单数页）", state=tk.NORMAL)
+                else:
+                    info_lbl.config(text=f"框选要丢弃的区域{suffix}（单页 PDF）")
+                    btn_next.config(text="确认并开始OCR", state=tk.NORMAL)
+                    btn_skip.config(text="跳过（不擦除）", state=tk.NORMAL)
                 btn_undo.config(state=tk.NORMAL if count else tk.DISABLED)
             else:
                 info_lbl.config(text=f"第2步：框选第2页中要丢弃的区域{suffix}（双数页使用此位置）")
@@ -218,9 +231,11 @@ class OCRMixin(_BaseMixin):
                 self.discard_boxes[step].pop()
                 refresh_canvas()
 
+        total_pages = len(self.cleaned_pdf_images)
+
         def on_next():
             nonlocal step
-            if step == 0:
+            if step == 0 and total_pages > 1:
                 step = 1
                 refresh_canvas()
             else:
@@ -231,7 +246,7 @@ class OCRMixin(_BaseMixin):
         def on_skip():
             nonlocal step
             self.discard_boxes[step] = []
-            if step == 0:
+            if step == 0 and total_pages > 1:
                 step = 1
                 refresh_canvas()
             else:
