@@ -1,16 +1,17 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
-import fitz  # PyMuPDF
-import pytesseract
-from docx import Document
-import difflib
 import os
 import io
+
+import fitz  # PyMuPDF
+import numpy as np
+from rapidocr_onnxruntime import RapidOCR
+from docx import Document
+import difflib
 from PIL import Image, ImageTk, ImageDraw
 
 # ================= 配置区域 =================
-TESSERACT_PATH = r"E:\Code\Tesseract\tesseract.exe"
-pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
+ocr_engine = RapidOCR()
 # ============================================
 
 
@@ -116,15 +117,12 @@ class DocxPdfReviewer:
 
     @staticmethod
     def _remove_red_pixels(img):
-        """将偏红色像素替换为白色（相对差值法，适应扫描件颜色不纯）"""
-        pixels = img.load()
-        width, height = img.size
-        for y in range(height):
-            for x in range(width):
-                r, g, b = pixels[x, y]
-                if r > max(g, b) + 30:
-                    pixels[x, y] = (255, 255, 255)
-        return img
+        """将偏红色像素替换为白色（numpy 向量化，比逐像素循环快数十倍）"""
+        arr = np.array(img)
+        r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
+        mask = r > np.maximum(g, b) + 30
+        arr[mask] = [255, 255, 255]
+        return Image.fromarray(arr)
 
     @staticmethod
     def _strip_whitespace(text):
@@ -177,7 +175,7 @@ class DocxPdfReviewer:
         self.crop_box = None
         try:
             doc = fitz.open(self.pdf_path)
-            mat = fitz.Matrix(2.0, 2.0)
+            mat = fitz.Matrix(1.5, 1.5)
             for i in range(len(doc)):
                 page = doc.load_page(i)
                 pix = page.get_pixmap(matrix=mat)
@@ -337,6 +335,17 @@ class DocxPdfReviewer:
 
         refresh_canvas()
 
+    @staticmethod
+    def _ocr_single(img):
+        """对单张图片执行OCR"""
+        result, _ = ocr_engine(np.array(img))
+        lines = []
+        if result:
+            for _, text, _ in result:
+                if text.strip():
+                    lines.append(text.strip())
+        return lines
+
     def _apply_crop_and_ocr(self):
         """按奇偶页分别擦除框选区域，然后执行OCR"""
         self.lbl_pdf.config(text="正在OCR识别...", fg="orange")
@@ -349,8 +358,7 @@ class DocxPdfReviewer:
                 if box:
                     draw = ImageDraw.Draw(img)
                     draw.rectangle(box, fill="white")
-                text = pytesseract.image_to_string(img, lang='chi_sim', config='--psm 6')
-                pdf_lines.append(text)
+                pdf_lines.extend(self._ocr_single(img))
 
                 self.lbl_pdf.config(text=f"OCR中... 第 {i + 1}/{len(self.cleaned_pdf_images)} 页")
                 self.root.update()
