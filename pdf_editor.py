@@ -383,7 +383,13 @@ class DocxPdfReviewer:
 
         win = tk.Toplevel(self.root)
         win.title("去红头PDF预览")
-        win.geometry("900x700")
+        img_w, img_h = self.cleaned_pdf_images[0].size
+        screen_w = self.root.winfo_screenwidth() - 100
+        screen_h = self.root.winfo_screenheight() - 150
+        scale = min(screen_w / img_w, screen_h / img_h, 1.0)
+        win_w = max(int(img_w * scale), 300)
+        win_h = max(int(img_h * scale) + 50, 200)
+        win.geometry(f"{win_w}x{win_h}")
 
         # 翻页控制
         nav_frame = tk.Frame(win, pady=5)
