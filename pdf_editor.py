@@ -90,12 +90,28 @@ class DocxPdfReviewer:
         except tk.TclError:
             pass
 
+    def _is_red_header(self, paragraph):
+        """检查段落中的文字是否包含红色字体"""
+        for run in paragraph.runs:
+            if run.font.color and run.font.color.rgb:
+                r, g, b = run.font.color.rgb
+                if r > 200 and g < 60 and b < 60:
+                    return True
+        return False
+
     def load_docx(self):
         self.docx_path = filedialog.askopenfilename(filetypes=[("Word Documents", "*.docx")])
         if self.docx_path:
             self.lbl_docx.config(text=os.path.basename(self.docx_path), fg="black")
             self.doc_obj = Document(self.docx_path)
-            raw_text = "\n".join([p.text for p in self.doc_obj.paragraphs if p.text.strip()])
+            # 跳过红头段落（红色字体或含"文件"字样），仅比对正文
+            body_paragraphs = []
+            for p in self.doc_obj.paragraphs:
+                if self._is_red_header(p):
+                    continue
+                if p.text.strip():
+                    body_paragraphs.append(p.text)
+            raw_text = "\n".join(body_paragraphs)
             self.docx_text = self._normalize_text(raw_text)
 
     @staticmethod
