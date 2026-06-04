@@ -39,6 +39,7 @@ class _BaseMixin:
     _saved_sel: str | None
     _hover_popup: tk.Toplevel | None
     _hover_block_id: int
+    _guide_win: tk.Toplevel | None
     compare_symbols: tk.BooleanVar
     show_info: tk.BooleanVar
     cleaned_pdf_images: list

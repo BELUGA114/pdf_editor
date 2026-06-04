@@ -24,6 +24,33 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
     TEXT = "#333333"       # 正文
     MUTED = "#999999"      # 弱化文字
 
+    # 使用指南内容（_show_welcome 和 _show_guide_window 共用）
+    _GUIDE_LINES = [
+        ("欢迎使用 Docx-PDF 差异比对工具\n\n", "header"),
+        ("本工具帮助您比对 Word 原稿与 PDF 扫描件的文字差异，\n"
+         "逐条审核后导出修改后的 Word 文档。\n\n", "body"),
+        ("═══ 单文件比对（点击或拖入卡片） ═══\n\n", "header"),
+        ("  ① 加载 DOCX → 点击或拖入原始 Word 文档到左上角卡片\n", "body"),
+        ("  ② 加载 PDF  → 点击或拖入扫描版 PDF 到右上角卡片\n", "body"),
+        ("  ③ 裁剪区域 → 在弹出的窗口中框选页码、水印等无关区域\n", "body"),
+        ("  ④ 开始比对 → 点击「分析差异」按钮\n", "body"),
+        ("  ⑤ 逐条审核 → 鼠标悬停在红色/绿色行上，点「同意」或「忽略」\n", "body"),
+        ("  ⑥ 导出结果 → 点击右侧「导出：同步更新版 Docx」保存\n\n", "body"),
+        ("═══ 批量比对（点击或拖入下方两个文件夹卡片） ═══\n\n", "header"),
+        ("  ① 点击或拖入左下角卡片 → 选择存放 DOCX 文件的文件夹\n", "body"),
+        ("  ② 点击或拖入右下角卡片 → 选择存放 PDF 文件的文件夹\n", "body"),
+        ("  ③ 文件名相同的 DOCX 和 PDF 会自动配对\n", "body"),
+        ("  ④ 裁剪第 1 对 PDF 后，可选择将相同裁剪区域用于其余文件\n", "body"),
+        ("  ⑤ 通过「上一对」「下一对」按钮切换文件对\n", "body"),
+        ("  ⑥ 每对独立审核、分别导出\n\n", "body"),
+        ("═══ 界面说明 ═══\n\n", "header"),
+        ("  · 红色底 = 原文被删除的内容    绿色底 = PDF 新增的内容\n", "body"),
+        ("  · 深色 = 已同意采纳该处改动    浅色 = 已忽略该处改动\n", "body"),
+        ("  · 导出前缀：可在导出按钮旁输入文字，导出文件名前会自动添加\n", "body"),
+        ("  · 比对符号：勾选时标点、括号等符号也参与比对；不勾选则忽略\n", "body"),
+        ("  · 提示弹窗：勾选后显示操作完成提示；不勾选则仅显示警告和错误\n", "body"),
+    ]
+
 
 
     def __init__(self, root):
@@ -56,6 +83,7 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
         self._saved_docx_source = ''    # 分析时的源文本（保证回写一致性）
         self._hover_popup = None   # 悬浮窗引用
         self._hover_block_id = -1  # 当前悬浮的块ID
+        self._guide_win = None    # 使用指南弹窗引用
 
         self._build_ui()
 
@@ -78,6 +106,10 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
         tk.Label(header, text="OCR 驱动 · Git 风格展示",
                  font=("Microsoft YaHei UI", 9),
                  bg="#1a1a2e", fg="#a0a0c0").pack(side=tk.LEFT, padx=12)
+        tk.Button(header, text="使用指南", command=self._show_guide_window,
+                  bg="#2a3050", fg="white", relief=tk.FLAT,
+                  padx=12, pady=4, cursor="hand2",
+                  font=("Microsoft YaHei UI", 9)).pack(side=tk.RIGHT)
 
         # ---- 拖放区域 2x2 网格 ----
         grid_frame = tk.Frame(self.root, bg=self.BG, padx=20, pady=10)
@@ -91,27 +123,27 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
                                                   sticky=tk.W, pady=(0, 2))
 
         docx_card, self.lbl_docx = self._make_drop_zone(
-            grid_frame, "拖入 DOCX", "原始 Word 文档（基准）", "",
+            grid_frame, "DOCX 文件", "点击或拖入原始 Word 文档（基准）", "",
             self.load_docx)
         docx_card.grid(row=1, column=0, sticky="nsew", padx=(0, 4), pady=(0, 4))
 
         pdf_card, self.lbl_pdf = self._make_drop_zone(
-            grid_frame, "拖入 PDF", "扫描版 PDF（对比件）", "",
+            grid_frame, "PDF 文件", "点击或拖入扫描版 PDF（对比件）", "",
             self.load_pdf)
         pdf_card.grid(row=1, column=1, sticky="nsew", padx=(4, 0), pady=(0, 4))
 
-        tk.Label(grid_frame, text="批量比对 — 分别选择存放 DOCX 和 PDF 的文件夹，自动匹配同名文件对",
+        tk.Label(grid_frame, text="批量比对 — 点击或拖入 DOCX 和 PDF 文件夹，自动匹配同名文件对",
                  font=("Microsoft YaHei UI", 8, "bold"),
                  bg=self.BG, fg=self.MUTED).grid(row=2, column=0, columnspan=2,
                                                   sticky=tk.W, pady=(10, 2))
 
         docx_folder_card, self.lbl_docx_folder = self._make_drop_zone(
-            grid_frame, "选择 DOCX 文件夹", "批量 Word 文档目录", "",
+            grid_frame, "DOCX 文件夹", "点击或拖入批量 Word 文档目录", "",
             self._select_docx_folder)
         docx_folder_card.grid(row=3, column=0, sticky="nsew", padx=(0, 4), pady=(4, 0))
 
         pdf_folder_card, self.lbl_pdf_folder = self._make_drop_zone(
-            grid_frame, "选择 PDF 文件夹", "批量 PDF 文件目录", "",
+            grid_frame, "PDF 文件夹", "点击或拖入批量 PDF 文件目录", "",
             self._select_pdf_folder)
         pdf_folder_card.grid(row=3, column=1, sticky="nsew", padx=(4, 0), pady=(4, 0))
 
@@ -276,19 +308,73 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
     def _show_welcome(self):
         """在差异展示区显示新手引导"""
         self.txt_diff.delete("1.0", tk.END)
-        self.txt_diff.insert(tk.END, "使用指南\n", "header")
-        self.txt_diff.insert(tk.END, "\n")
-        self.txt_diff.insert(tk.END, "  1. 在上方拖入或点击选择 DOCX（原始 Word 文档）\n")
-        self.txt_diff.insert(tk.END, "  2. 拖入或点击选择 PDF（扫描版对比件）\n")
-        self.txt_diff.insert(tk.END, "  3. 裁剪 PDF 中需忽略的区域（如页码、水印）\n")
-        self.txt_diff.insert(tk.END, "  4. 点击「分析差异」查看 DOCX 与 PDF 的文字差异\n")
-        self.txt_diff.insert(tk.END, "  5. 鼠标悬停在红色/绿色行上可逐条同意或忽略更改\n")
-        self.txt_diff.insert(tk.END, "  6. 点击「导出」将已同意的更改写入新 DOCX\n")
-        self.txt_diff.insert(tk.END, "\n")
-        self.txt_diff.insert(tk.END, "批量模式：在下方两个文件夹区分别选择 DOCX 和 PDF 目录，\n")
-        self.txt_diff.insert(tk.END, "程序会自动匹配同名文件对。\n")
+        for text, tag in self._GUIDE_LINES:
+            self.txt_diff.insert(tk.END, text, tag)
         self.txt_diff.config(state=tk.DISABLED)
         self._update_button_states()
+
+    def _show_guide_window(self):
+        """在居中弹窗中显示使用指南（可重复打开，已有窗口时聚焦）"""
+        if self._guide_win is not None:
+            try:
+                self._guide_win.deiconify()
+                self._guide_win.lift()
+                self._guide_win.focus_force()
+            except tk.TclError:
+                self._guide_win = None
+            else:
+                return
+
+        win = tk.Toplevel(self.root)
+        win.title("使用指南")
+        win.geometry("620x520")
+        win.resizable(True, True)
+        win.minsize(480, 360)
+        win.transient(self.root)
+
+        def on_close():
+            self._guide_win = None
+            win.destroy()
+        win.protocol("WM_DELETE_WINDOW", on_close)
+        self._guide_win = win
+
+        # 居中
+        win.update_idletasks()
+        pw, ph = self.root.winfo_width(), self.root.winfo_height()
+        px, py = self.root.winfo_x(), self.root.winfo_y()
+        ww, wh = win.winfo_width(), win.winfo_height()
+        win.geometry(f"+{px + (pw - ww) // 2}+{py + (ph - wh) // 2}")
+
+        # 内容区
+        text_frame = tk.Frame(win, bg=self.CARD_BG)
+        text_frame.pack(fill=tk.BOTH, expand=True)
+
+        txt = tk.Text(text_frame, font=("Microsoft YaHei UI", 10), wrap=tk.WORD,
+                      bg=self.CARD_BG, fg=self.TEXT, bd=0, padx=16, pady=12,
+                      cursor="arrow")
+        txt.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        scroll = tk.Scrollbar(text_frame, command=txt.yview)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        txt.config(yscrollcommand=scroll.set)
+
+        txt.tag_config("header", foreground="#1a1a2e",
+                       font=("Microsoft YaHei UI", 11, "bold"))
+        txt.tag_config("body", font=("Microsoft YaHei UI", 10))
+
+        for text, tag in self._GUIDE_LINES:
+            txt.insert(tk.END, text, tag)
+        txt.config(state=tk.DISABLED)
+
+        # 关闭按钮
+        btn_frame = tk.Frame(win, bg=self.BG, padx=12, pady=8)
+        btn_frame.pack(fill=tk.X)
+        tk.Button(btn_frame, text="关闭", command=on_close,
+                  bg=self.PRIMARY, fg="white", relief=tk.FLAT,
+                  padx=24, pady=6, cursor="hand2",
+                  font=("Microsoft YaHei UI", 10)).pack()
+
+        win.bind("<Escape>", lambda _: on_close())
 
     def _update_button_states(self):
         """根据当前加载状态切换按钮的可用外观"""

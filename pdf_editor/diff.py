@@ -126,7 +126,7 @@ class DiffMixin(_BaseMixin):
             if b.get('accepted') and b['tag'] != 'equal':
                 prev_accepted[(b['tag'], b['old'], b['new'])] = True
 
-        matcher = difflib.SequenceMatcher(None, docx_flat, pdf_flat)
+        matcher = difflib.SequenceMatcher(None, docx_flat, pdf_flat, autojunk=False)
         self.diff_blocks = []
         block_id = 0
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
