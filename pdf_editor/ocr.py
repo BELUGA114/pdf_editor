@@ -94,6 +94,14 @@ class OCRMixin(_BaseMixin):
         win = tk.Toplevel(self.root)
         win.title("裁剪PDF（框选要丢弃的区域，可多选）")
         win.geometry("900x700")
+        win.transient(self.root)
+        win.grab_set()
+        # 居中到主窗口
+        win.update_idletasks()
+        pw, ph = self.root.winfo_width(), self.root.winfo_height()
+        px, py = self.root.winfo_x(), self.root.winfo_y()
+        ww, wh = win.winfo_width(), win.winfo_height()
+        win.geometry(f"900x700+{px + (pw - ww) // 2}+{py + (ph - wh) // 2}")
 
         def on_close():
             """X 关闭窗口视为跳过剩余裁剪步骤"""

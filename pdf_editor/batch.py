@@ -181,6 +181,7 @@ class BatchMixin(_BaseMixin):
         # 保存当前对的数据（如果还在激活对的话）
         if self._pair_index >= 0 and self._pair_index not in self._pair_data:
             self._save_pair_data(self._pair_index)
+        self._pair_index = index
         self._load_docx_path(docx_path)
         self._load_pdf_path(pdf_path, pair_index=index)
 
@@ -192,6 +193,9 @@ class BatchMixin(_BaseMixin):
             self._set_status(f"第{index + 1}对尚未加载完成，请稍候", "warn")
             return
         data = self._pair_data[index]
+        if 'error' in data:
+            self._set_status(f"第{index + 1}对加载失败，无法查看", "error")
+            return
         self._pair_index = index
         self.docx_text = data['docx_text']
         self.pdf_text = data['pdf_text']

@@ -49,7 +49,9 @@ def _enable_dnd(hwnd: int, callback):
                 del shell32.DragQueryFileW.argtypes, shell32.DragQueryFileW.restype
                 del shell32.DragFinish.argtypes
             return 0
-        return user32.CallWindowProcW(original, hwnd, msg, wparam, lparam)
+        return user32.CallWindowProcW(original,
+            wintypes.HWND(hwnd), wintypes.UINT(msg),
+            wintypes.WPARAM(wparam), wintypes.LPARAM(lparam))
 
     user32.SetWindowLongPtrW(hwnd, GWLP_WNDPROC,
                               ctypes.cast(new_wndproc, ctypes.c_void_p).value)

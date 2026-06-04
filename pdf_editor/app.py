@@ -306,10 +306,14 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
 
         # 批量导航按钮
         if hasattr(self, '_btn_nav_prev') and self._btn_nav_prev.winfo_exists():
-            can_prev = self._pair_index > 0 and (self._pair_index - 1) in self._pair_data
+            can_prev = (self._pair_index > 0
+                        and (self._pair_index - 1) in self._pair_data
+                        and 'error' not in self._pair_data[self._pair_index - 1])
             self._set_btn_available(self._btn_nav_prev, can_prev)
         if hasattr(self, '_btn_nav_next') and self._btn_nav_next.winfo_exists():
-            can_next = self._pair_index < len(self._pairs) - 1 and (self._pair_index + 1) in self._pair_data
+            can_next = (self._pair_index < len(self._pairs) - 1
+                        and (self._pair_index + 1) in self._pair_data
+                        and 'error' not in self._pair_data[self._pair_index + 1])
             self._set_btn_available(self._btn_nav_next, can_next)
 
     def _alert(self, title: str, message: str, level: str = "info"):
