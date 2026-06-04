@@ -172,7 +172,7 @@ class LoaderMixin(_BaseMixin):
         """从路径加载 PDF（支持拖放），包括去红头 + 裁剪 → OCR"""
         self.pdf_path = path
         self._pdf_name = os.path.basename(path)
-        self._set_status(f"正在加载 {self._pdf_name} ...", self.WARN)
+        self._set_status(f"正在加载 {self._pdf_name} ...", "loading")
 
         self.cleaned_pdf_images = []
         self.crop_box = None
@@ -187,7 +187,7 @@ class LoaderMixin(_BaseMixin):
                 img = Image.open(io.BytesIO(img_data)).convert("RGB")
                 cleaned = self._remove_red_pixels(img)
                 self.cleaned_pdf_images.append(cleaned)
-                self._set_status(f"加载中... 第 {i + 1}/{len(doc)} 页")
+                self._set_status(f"加载中... 第 {i + 1}/{len(doc)} 页", "loading")
 
             self.lbl_pdf.config(text=f"{self._pdf_name}（已加载，请裁剪）", fg=self.WARN)
             self._show_crop_dialog()

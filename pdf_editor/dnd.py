@@ -26,7 +26,7 @@ def _enable_dnd(hwnd: int, callback):
         wintypes.LPARAM, wintypes.HWND, wintypes.UINT,
         wintypes.WPARAM, wintypes.LPARAM,
     )
-    original = user32.GetWindowLongPtrW(hwnd, GWLP_WNDPROC)
+    original = wintypes.LPARAM(user32.GetWindowLongPtrW(hwnd, GWLP_WNDPROC))
 
     @WNDPROC
     def new_wndproc(hwnd, msg, wparam, lparam):

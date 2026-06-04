@@ -27,7 +27,7 @@ class OCRMixin(_BaseMixin):
 
     def _apply_crop_and_ocr(self, pair_index: int | None = None):
         """异步执行裁剪+OCR，不阻塞UI。pair_index 非 None 时表示批量模式"""
-        self._set_status("正在准备OCR...", "orange")
+        self._set_status("正在准备OCR...", "loading")
 
         # 先同步擦除框选区域（轻量操作）
         for i, img in enumerate(self.cleaned_pdf_images):
@@ -59,7 +59,7 @@ class OCRMixin(_BaseMixin):
         def poll():
             cur = progress["current"]
             suffix = f" (第{pair_index + 1}/{len(self._pairs)}对)" if pair_index is not None and self._pairs else ""
-            self._set_status(f"OCR中... 第 {cur}/{total} 页{suffix}", "orange")
+            self._set_status(f"OCR中... 第 {cur}/{total} 页{suffix}", "loading")
             if thread.is_alive():
                 self.root.after(150, poll)
             elif error[0]:

@@ -55,11 +55,15 @@ class _BaseMixin:
     _btn_commands: dict
     _diff_hint: tk.Label
     _mid_frame: tk.Frame
+    export_prefix: tk.StringVar
+    _prefix_entry: tk.Entry
 
     # 类常量（定义在 DocxPdfReviewer）
     PRIMARY: str
     WARN: str
     SUCCESS: str
+    ERROR: str
+    LOADING: str
     MUTED: str
     BG: str
     TEXT: str
@@ -68,7 +72,7 @@ class _BaseMixin:
 
     # 跨 Mixin 方法 stub
     def _alert(self, title: str, message: str, level: str = "info") -> None: ...
-    def _set_status(self, text: str, color: str | None = None) -> None: ...
+    def _set_status(self, text: str, level: str = "") -> None: ...
     def _show_crop_dialog(self) -> None: ...
     def _is_red_header(self, paragraph) -> bool: ...
     @staticmethod

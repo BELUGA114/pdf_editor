@@ -1,5 +1,6 @@
 """导出 — 同步更新 DOCX、格式保留合并"""
 
+import os
 import tkinter as tk
 from tkinter import filedialog
 import difflib
@@ -116,8 +117,12 @@ class ExportMixin(_BaseMixin):
         """导出：将已同意的更改并入 DOCX（未同意则保留原文）"""
         if not self.doc_obj:
             return
+        original_name = os.path.basename(self.docx_path) if self.docx_path else "document.docx"
+        prefix = getattr(self, 'export_prefix', tk.StringVar(value="")).get().strip()
+        default_name = prefix + original_name if prefix else original_name
         save_path = filedialog.asksaveasfilename(defaultextension=".docx",
-                                                       filetypes=[("Word Documents", "*.docx")])
+                                                       filetypes=[("Word Documents", "*.docx")],
+                                                       initialfile=default_name)
         if not save_path:
             return
 

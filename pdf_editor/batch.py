@@ -189,7 +189,7 @@ class BatchMixin(_BaseMixin):
     def _switch_to_pair(self, index: int):
         """切换到指定索引的比对对"""
         if index not in self._pair_data:
-            self._set_status(f"第{index + 1}对尚未加载完成，请稍候", "orange")
+            self._set_status(f"第{index + 1}对尚未加载完成，请稍候", "warn")
             return
         data = self._pair_data[index]
         self._pair_index = index

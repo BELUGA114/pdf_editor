@@ -18,6 +18,8 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
     PRIMARY = "#4a6eb5"    # 主色调
     SUCCESS = "#52c41a"    # 成功/导出
     WARN = "#faad14"       # 警告
+    ERROR = "#ff4d4f"      # 错误
+    LOADING = "#4a6eb5"    # 加载中
     BORDER = "#d9d9d9"     # 边框
     TEXT = "#333333"       # 正文
     MUTED = "#999999"      # 弱化文字
@@ -130,13 +132,20 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
         self._btn_preview.pack(side=tk.LEFT, padx=8)
 
         self._status_lbl = tk.Label(action_frame, text="",
-                                    font=("Microsoft YaHei UI", 9),
-                                    bg=self.BG, fg=self.MUTED)
-        self._status_lbl.pack(side=tk.LEFT, padx=8)
+                                    font=("Microsoft YaHei UI", 10, "bold"),
+                                    bg=self.BG, fg=self.MUTED,
+                                    anchor=tk.CENTER, padx=16, pady=6)
+        self._status_lbl.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=8)
 
-        # 导出按钮（右侧）
+        # 导出按钮+前缀（右侧）
         export_frame = tk.Frame(action_frame, bg=self.BG)
         export_frame.pack(side=tk.RIGHT)
+        tk.Label(export_frame, text="导出前缀", font=("Microsoft YaHei UI", 9),
+                 bg=self.BG, fg=self.MUTED).pack(side=tk.LEFT, padx=(0, 4))
+        self.export_prefix = tk.StringVar(value="")
+        self._prefix_entry = tk.Entry(export_frame, textvariable=self.export_prefix, width=10,
+                                      font=("Microsoft YaHei UI", 9))
+        self._prefix_entry.pack(side=tk.LEFT, padx=(0, 8))
         self._btn_sync = self._make_btn(export_frame, "导出：同步更新版 Docx",
                        self.save_synced_docx, bg=self.SUCCESS, font=("Microsoft YaHei UI", 9))
         self._btn_sync.pack(side=tk.LEFT, padx=4)
@@ -245,9 +254,21 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
 
 
 
-    def _set_status(self, text: str, color: str | None = None):
-        """更新操作栏状态标签"""
-        self._status_lbl.config(text=text, fg=color or self.MUTED)
+    def _set_status(self, text: str, level: str = ""):
+        """更新状态标签栏，level=loading/success/warn/error，空字符串为无状态"""
+        color_map = {
+            "loading": ("white", self.LOADING),
+            "success": ("white", self.SUCCESS),
+            "warn": ("white", "#fa8c16"),
+            "error": ("white", self.ERROR),
+        }
+        if text and level in color_map:
+            fg, bg = color_map[level]
+            self._status_lbl.config(text=text, fg=fg, bg=bg)
+        elif text:
+            self._status_lbl.config(text=text, fg=self.PRIMARY, bg=self.BG)
+        else:
+            self._status_lbl.config(text="", fg=self.MUTED, bg=self.BG)
         self.root.update_idletasks()
 
 
