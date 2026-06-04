@@ -27,6 +27,10 @@ class OCRMixin(_BaseMixin):
 
     def _apply_crop_and_ocr(self, pair_index: int | None = None):
         """异步执行裁剪+OCR，不阻塞UI。pair_index 非 None 时表示批量模式"""
+        if not self.cleaned_pdf_images:
+            self._set_status("")
+            self._alert("错误", "无PDF图像数据，请先加载PDF。", "error")
+            return
         self._set_status("正在准备OCR...", "loading")
 
         # 先同步擦除框选区域（轻量操作）
@@ -38,7 +42,6 @@ class OCRMixin(_BaseMixin):
                     draw.rectangle(box, fill="white")
 
         # OCR 放到后台线程，UI 线程用 after 轮询进度
-        import threading
         total = len(self.cleaned_pdf_images)
         results: list = []
         progress = {"current": 0}
@@ -137,6 +140,8 @@ class OCRMixin(_BaseMixin):
             cw = max(canvas.winfo_width(), 100)
             ch = max(canvas.winfo_height(), 100)
             img = self.cleaned_pdf_images[page_idx]
+            if img.width < 1 or img.height < 1:
+                return 1.0, 0, 0
             s = min(cw / img.width, ch / img.height, 1.0)
             dw = int(img.width * s)
             dh = int(img.height * s)

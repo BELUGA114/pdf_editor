@@ -103,7 +103,6 @@ class BatchMixin(_BaseMixin):
         if index >= len(self._pairs):
             return
         docx_path, pdf_path = self._pairs[index]
-        import threading
 
         def worker():
             try:
@@ -117,21 +116,24 @@ class BatchMixin(_BaseMixin):
 
                 # 加载 PDF 页面
                 pdf_doc = fitz.open(pdf_path)
-                mat = fitz.Matrix(1.5, 1.5)
-                images = []
-                for i in range(len(pdf_doc)):
-                    page = pdf_doc.load_page(i)
-                    pix = page.get_pixmap(matrix=mat)
-                    img_data = pix.tobytes("png")
-                    img = Image.open(io.BytesIO(img_data)).convert("RGB")
-                    cleaned = self._remove_red_pixels(img)
-                    # 应用首对的裁剪区域
-                    boxes = self.discard_boxes[i % 2]
-                    if boxes:
-                        draw = ImageDraw.Draw(cleaned)
-                        for box in boxes:
-                            draw.rectangle(box, fill="white")
-                    images.append(cleaned)
+                try:
+                    mat = fitz.Matrix(1.5, 1.5)
+                    images = []
+                    for i in range(len(pdf_doc)):
+                        page = pdf_doc.load_page(i)
+                        pix = page.get_pixmap(matrix=mat)
+                        img_data = pix.tobytes("png")
+                        img = Image.open(io.BytesIO(img_data)).convert("RGB")
+                        cleaned = self._remove_red_pixels(img)
+                        # 应用首对的裁剪区域
+                        boxes = self.discard_boxes[i % 2]
+                        if boxes:
+                            draw = ImageDraw.Draw(cleaned)
+                            for box in boxes:
+                                draw.rectangle(box, fill="white")
+                        images.append(cleaned)
+                finally:
+                    pdf_doc.close()
 
                 # OCR
                 pdf_lines = []

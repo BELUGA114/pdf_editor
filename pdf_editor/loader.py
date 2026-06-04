@@ -69,7 +69,11 @@ class LoaderMixin(_BaseMixin):
     def _scan_folder(self, path: str, exts: set):
         """扫描文件夹中指定扩展名的文件，返回 {stem: fullpath}"""
         result = {}
-        for f in os.listdir(path):
+        try:
+            entries = os.listdir(path)
+        except OSError:
+            return result
+        for f in entries:
             full = os.path.join(path, f)
             if not os.path.isfile(full):
                 continue
@@ -177,6 +181,7 @@ class LoaderMixin(_BaseMixin):
         self.cleaned_pdf_images = []
         self.crop_box = None
         self._current_pair_index = pair_index
+        doc = None
         try:
             doc = fitz.open(path)
             mat = fitz.Matrix(1.5, 1.5)
@@ -195,6 +200,9 @@ class LoaderMixin(_BaseMixin):
             self.lbl_pdf.config(text=f"{self._pdf_name}（加载失败）", fg="red")
             self._set_status("")
             self._alert("错误", f"加载PDF异常:\n{str(e)}", "error")
+        finally:
+            if doc is not None:
+                doc.close()
 
 
 

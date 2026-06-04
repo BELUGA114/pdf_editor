@@ -33,8 +33,10 @@ class ExportMixin(_BaseMixin):
         target_flat = ''.join(target_parts)
 
         # 在归一化空间做二次 diff，找到编辑操作
-        full_text = getattr(self, '_saved_docx_source', self.docx_text)
+        full_text = self._saved_docx_source or self.docx_text
         flat_to_full = self._docx_flat_positions
+        if not flat_to_full:
+            return 0
         original_flat = ''.join(full_text[i] for i in flat_to_full)
 
         matcher = difflib.SequenceMatcher(None, original_flat, target_flat)
