@@ -49,6 +49,12 @@ class DiffMixin(_BaseMixin):
             win.wait_window()
         else:
             self.compare_symbols.set(new_val)
+            if not self.docx_text or not self.pdf_text:
+                self._alert("提示",
+                    "请先加载 DOCX 和 PDF 文件，再进行比对模式切换。\n"
+                    "操作步骤：加载 DOCX → 加载 PDF → 裁剪 → OCR → 分析差异",
+                    "warn")
+                return
             self.analyze_diff(show_warning=False)
 
     def _do_toggle_symbols(self, win, new_val):

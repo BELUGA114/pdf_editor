@@ -1,4 +1,4 @@
-"""导出 — 同步更新/去红头 DOCX、格式保留合并"""
+"""导出 — 同步更新 DOCX、格式保留合并"""
 
 import tkinter as tk
 from tkinter import filedialog
@@ -6,7 +6,7 @@ import difflib
 from .config import _BaseMixin
 
 class ExportMixin(_BaseMixin):
-    """导出 — 同步更新/去红头 DOCX、格式保留合并"""
+    """导出 — 同步更新 DOCX、格式保留合并"""
 
     def _merge_accepted_changes(self):
         """将已同意的更改写入 self.doc_obj（原地修改），返回并入的更改数量"""
@@ -129,103 +129,4 @@ class ExportMixin(_BaseMixin):
             self._alert("成功", f"已并入 {count} 处更改并导出文档。", "info")
         else:
             self._alert("成功", "未同意任何更改，已导出原版文档。", "info")
-
-
-
-    def _is_red_border(self, paragraph):
-        """检查段落是否有红色边框线（红头文件的红色横线）"""
-        try:
-            from docx.oxml.ns import qn
-            pPr = paragraph._element.find(qn('w:pPr'))
-            if pPr is not None:
-                pBdr = pPr.find(qn('w:pBdr'))
-                if pBdr is not None:
-                    for tag in (qn('w:bottom'), qn('w:top')):
-                        border = pBdr.find(tag)
-                        if border is not None:
-                            color = border.get(qn('w:color'))
-                            if color and color != 'auto' and len(color) >= 6:
-                                r = int(color[0:2], 16)
-                                g = int(color[2:4], 16)
-                                b = int(color[4:6], 16)
-                                if r > 200 and g < 60 and b < 60:
-                                    return True
-        except Exception:
-            pass
-        return False
-
-
-
-    def _remove_red_border(self, paragraph):
-        """移除段落的红色边框线"""
-        try:
-            from docx.oxml.ns import qn
-            pPr = paragraph._element.find(qn('w:pPr'))
-            if pPr is not None:
-                pBdr = pPr.find(qn('w:pBdr'))
-                if pBdr is not None:
-                    for tag in (qn('w:bottom'), qn('w:top')):
-                        border = pBdr.find(tag)
-                        if border is not None:
-                            color = border.get(qn('w:color'))
-                            if color and color != 'auto' and len(color) >= 6:
-                                r = int(color[0:2], 16)
-                                g = int(color[2:4], 16)
-                                b = int(color[4:6], 16)
-                                if r > 200 and g < 60 and b < 60:
-                                    pBdr.remove(border)
-        except Exception:
-            pass
-
-
-
-    def save_dered_docx(self):
-        """导出：先并入已同意的更改，再去红头（清除红色字体段落和红色横线，不改变其余格式）"""
-        if not self.doc_obj:
-            return
-
-        save_path = filedialog.asksaveasfilename(defaultextension=".docx", filetypes=[("Word Documents", "*.docx")])
-        if not save_path:
-            return
-
-        # 先并入已同意的更改
-        self._merge_accepted_changes()
-
-        # 扫描前6个段落，检测并清除红头元素
-        paragraphs_to_check = self.doc_obj.paragraphs[:6]
-
-        for p in paragraphs_to_check:
-            # 检查红色文字
-            is_red_head = False
-            for run in p.runs:
-                if run.font.color and run.font.color.rgb:
-                    r, g, b = run.font.color.rgb
-                    if r > 200 and g < 60 and b < 60:
-                        is_red_head = True
-                        break
-
-            # 命中了红头特征（红色文字或包含"文件"字样），清除文本但保留格式
-            if is_red_head or "文件" in p.text:
-                # 逐个 run 清空文字（保留字体/大小等格式信息）
-                for run in p.runs:
-                    run.text = ''
-                p.paragraph_format.space_before = 0
-                p.paragraph_format.space_after = 0
-
-            # 清除红色横线（段落边框）
-            if self._is_red_border(p):
-                self._remove_red_border(p)
-                # 如果该段落只有边框没有文字，清空其内容
-                if not p.text.strip():
-                    for run in p.runs:
-                        run.text = ''
-
-        try:
-            self.doc_obj.save(save_path)
-            self._update_button_states()
-            self._diff_hint.config(text="导出完成 — 可重新加载文档继续比对")
-            self._alert("成功", "已并入更改并去除红头，文档已导出。", "info")
-        except Exception as e:
-            self._alert("错误", f"保存失败: {str(e)}", "error")
-
 

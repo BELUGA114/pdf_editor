@@ -105,9 +105,10 @@ class LoaderMixin(_BaseMixin):
         self._pair_index = 0
         self._pair_data = {}
 
-        # 显示批量导航
+        # 显示批量导航（按在差异区之前的位置）
         if len(pairs) > 1:
-            self._batch_nav_frame.pack(fill=tk.X, pady=(0, 5))
+            self._batch_nav_frame.pack(fill=tk.X, pady=(0, 5),
+                                       before=self._mid_frame)
 
         docx_path, pdf_path = pairs[0]
         self._load_docx_path(docx_path)
@@ -137,8 +138,6 @@ class LoaderMixin(_BaseMixin):
             self._try_folder_match()
 
     @staticmethod
-
-
     def _normalize_text(text):
         """归一化文本：全角转半角、合并连续空格、去除行首行尾空白"""
         result = []

@@ -94,6 +94,7 @@ class BatchMixin(_BaseMixin):
         total = len(self._pairs)
         loaded = len(self._pair_data)
         self._batch_lbl.config(text=f"第 {self._pair_index + 1}/{total} 对（已加载 {loaded} 对）")
+        self._update_button_states()
 
 
 
@@ -188,6 +189,7 @@ class BatchMixin(_BaseMixin):
     def _switch_to_pair(self, index: int):
         """切换到指定索引的比对对"""
         if index not in self._pair_data:
+            self._set_status(f"第{index + 1}对尚未加载完成，请稍候", "orange")
             return
         data = self._pair_data[index]
         self._pair_index = index

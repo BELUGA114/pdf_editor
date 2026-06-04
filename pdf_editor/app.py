@@ -140,27 +140,27 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
         self._btn_sync = self._make_btn(export_frame, "导出：同步更新版 Docx",
                        self.save_synced_docx, bg=self.SUCCESS, font=("Microsoft YaHei UI", 9))
         self._btn_sync.pack(side=tk.LEFT, padx=4)
-        self._btn_dered = self._make_btn(export_frame, "导出：自动去红头版 Docx",
-                       self.save_dered_docx, bg="#e8a838", font=("Microsoft YaHei UI", 9))
-        self._btn_dered.pack(side=tk.LEFT, padx=4)
 
         # ---- 批量导航栏（初始隐藏） ----
         self._batch_nav_frame = tk.Frame(self.root, bg=self.BG)
-        # 不 pack，等批量模式激活时再显示
-        self._make_btn(self._batch_nav_frame, "← 上一对", self._nav_prev,
-                       bg="#6c757d", font=("Microsoft YaHei UI", 9)).pack(
-            side=tk.LEFT, padx=(0, 4))
-        self._batch_lbl = tk.Label(self._batch_nav_frame, text="第 1/1 对",
+        self._btn_nav_prev = self._make_btn(self._batch_nav_frame, "← 上一对",
+            self._nav_prev, bg="#6c757d", font=("Microsoft YaHei UI", 9))
+        self._btn_nav_prev.pack(side=tk.LEFT, padx=(0, 4))
+        self._batch_lbl = tk.Label(self._batch_nav_frame, text="",
                                    font=("Microsoft YaHei UI", 9, "bold"),
                                    bg=self.BG, fg=self.TEXT)
         self._batch_lbl.pack(side=tk.LEFT, padx=8)
-        self._make_btn(self._batch_nav_frame, "下一对 →", self._nav_next,
-                       bg="#6c757d", font=("Microsoft YaHei UI", 9)).pack(
-            side=tk.LEFT, padx=4)
+        self._btn_nav_next = self._make_btn(self._batch_nav_frame, "下一对 →",
+            self._nav_next, bg="#6c757d", font=("Microsoft YaHei UI", 9))
+        self._btn_nav_next.pack(side=tk.LEFT, padx=4)
 
         # ---- 差异展示区 ----
         mid_frame = tk.Frame(self.root, padx=20, pady=15, bg=self.BG)
         mid_frame.pack(fill=tk.BOTH, expand=True)
+        self._mid_frame = mid_frame
+        # 批量导航栏放在操作栏和差异区之间
+        self._batch_nav_frame.pack(fill=tk.X, pady=(0, 5), before=mid_frame)
+        self._batch_nav_frame.pack_forget()
 
         self._diff_hint = tk.Label(mid_frame,
                  text="鼠标悬停更改行可操作  |  红底=删除  绿底=新增  |  浅色=已忽略  深色=已同意",
@@ -201,15 +201,19 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
 
 
     def _on_drop(self, paths):
+        """拖放回调：自动识别文件/文件夹并加载"""
         for path in paths:
-            if os.path.isdir(path):
-                self._on_drop_folder(path)
-            else:
-                ext = os.path.splitext(path)[1].lower()
-                if ext == ".docx":
-                    self._load_docx_path(path)
-                elif ext == ".pdf":
-                    self._load_pdf_path(path)
+            try:
+                if os.path.isdir(path):
+                    self._on_drop_folder(path)
+                else:
+                    ext = os.path.splitext(path)[1].lower()
+                    if ext == ".docx":
+                        self._load_docx_path(path)
+                    elif ext == ".pdf":
+                        self._load_pdf_path(path)
+            except Exception:
+                pass  # 拖放操作不应崩溃，单个文件失败静默跳过
 
 
 
@@ -278,7 +282,14 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
         self._set_btn_available(self._btn_analyze, has_docx and has_pdf)
         self._set_btn_available(self._btn_preview, has_pdf_images)
         self._set_btn_available(self._btn_sync, has_doc_obj and has_diff and approved > 0)
-        self._set_btn_available(self._btn_dered, has_doc_obj)
+
+        # 批量导航按钮
+        if hasattr(self, '_btn_nav_prev') and self._btn_nav_prev.winfo_exists():
+            can_prev = self._pair_index > 0 and (self._pair_index - 1) in self._pair_data
+            self._set_btn_available(self._btn_nav_prev, can_prev)
+        if hasattr(self, '_btn_nav_next') and self._btn_nav_next.winfo_exists():
+            can_next = self._pair_index < len(self._pairs) - 1 and (self._pair_index + 1) in self._pair_data
+            self._set_btn_available(self._btn_nav_next, can_next)
 
     def _alert(self, title: str, message: str, level: str = "info"):
         """无提示音的消息弹窗（替代 messagebox）"""
@@ -376,15 +387,23 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
         if not hasattr(self, '_btn_colors'):
             self._btn_colors = {}
         self._btn_colors[id(b)] = active_bg
+        if not hasattr(self, '_btn_commands'):
+            self._btn_commands = {}
+        self._btn_commands[id(b)] = command
         return b
 
     def _set_btn_available(self, btn, available: bool):
-        """切换按钮可用状态的外观，避免 tkinter DISABLED 让文字变灰"""
+        """切换按钮可用状态的外观，不可用时同时禁用点击"""
         active_bg = self._btn_colors.get(id(btn), self.PRIMARY)
         if available:
-            btn.config(bg=active_bg, fg="white", cursor="hand2")
+            original = self._btn_commands.get(id(btn))
+            if original is not None:
+                btn.config(bg=active_bg, fg="white", cursor="hand2", command=original)
+            else:
+                btn.config(bg=active_bg, fg="white", cursor="hand2")
         else:
-            btn.config(bg="#b0b8c0", fg="#e8e8e8", cursor="arrow")
+            btn.config(bg="#b0b8c0", fg="#e8e8e8", cursor="arrow",
+                       command=lambda: None)
 
 
 

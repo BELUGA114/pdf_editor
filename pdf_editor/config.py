@@ -49,9 +49,12 @@ class _BaseMixin:
     _btn_analyze: tk.Button
     _btn_preview: tk.Button
     _btn_sync: tk.Button
-    _btn_dered: tk.Button
+    _btn_nav_prev: tk.Button
+    _btn_nav_next: tk.Button
     _btn_colors: dict
+    _btn_commands: dict
     _diff_hint: tk.Label
+    _mid_frame: tk.Frame
 
     # 类常量（定义在 DocxPdfReviewer）
     PRIMARY: str
