@@ -40,8 +40,10 @@ def _enable_dnd(hwnd: int, callback):
                 count = shell32.DragQueryFileW(hdrop, 0xFFFFFFFF, None, 0)
                 paths = []
                 for i in range(count):
-                    buf = ctypes.create_unicode_buffer(260)
-                    shell32.DragQueryFileW(hdrop, i, buf, 260)
+                    # 先查询所需缓冲区大小，再分配（支持长路径）
+                    needed = shell32.DragQueryFileW(hdrop, i, None, 0) + 1
+                    buf = ctypes.create_unicode_buffer(needed)
+                    shell32.DragQueryFileW(hdrop, i, buf, needed)
                     paths.append(buf.value)
                 shell32.DragFinish(hdrop)
                 callback(paths)

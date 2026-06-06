@@ -7,6 +7,15 @@ from .config import _BaseMixin
 class DiffMixin(_BaseMixin):
     """差异分析 — difflib 比对、Git 风格渲染、悬浮操作窗"""
 
+    @staticmethod
+    def _is_content_char(ch: str) -> bool:
+        """判断字符是否为需要比对的内容字符（CJK统一汉字/扩展A/ASCII字母数字）"""
+        return (
+            '一' <= ch <= '鿿' or '㐀' <= ch <= '䶿'
+            or 'a' <= ch <= 'z' or 'A' <= ch <= 'Z'
+            or '0' <= ch <= '9'
+        )
+
     def _on_toggle_symbols(self):
         """切换比对符号前，若有已同意的更改则弹窗确认"""
         # Checkbutton 已自动切换了变量值，先恢复
@@ -74,18 +83,10 @@ class DiffMixin(_BaseMixin):
         else:
             docx_flat = ''.join(
                 ch for ch in self.docx_text
-                if not ch.isspace() and (
-                    '一' <= ch <= '鿿' or '㐀' <= ch <= '䶿'
-                    or 'a' <= ch <= 'z' or 'A' <= ch <= 'Z'
-                    or '0' <= ch <= '9'
-                ))
+                if not ch.isspace() and self._is_content_char(ch))
             pdf_flat = ''.join(
                 ch for ch in self.pdf_text
-                if not ch.isspace() and (
-                    '一' <= ch <= '鿿' or '㐀' <= ch <= '䶿'
-                    or 'a' <= ch <= 'z' or 'A' <= ch <= 'Z'
-                    or '0' <= ch <= '9'
-                ))
+                if not ch.isspace() and self._is_content_char(ch))
 
         # 构建位置映射表（flat → full_text 位置），用于后续合并
         # 使用与 docx_flat 相同的源文本，确保 save_synced_docx 的二次 diff 一致
@@ -97,11 +98,7 @@ class DiffMixin(_BaseMixin):
                 if not ch.isspace():
                     self._docx_flat_positions.append(i)
             else:
-                if not ch.isspace() and (
-                    '一' <= ch <= '鿿' or '㐀' <= ch <= '䶿'
-                    or 'a' <= ch <= 'z' or 'A' <= ch <= 'Z'
-                    or '0' <= ch <= '9'
-                ):
+                if not ch.isspace() and self._is_content_char(ch):
                     self._docx_flat_positions.append(i)
 
         # 同时构建原始（未归一化）文本的位置映射，导出时用原始文本写回
@@ -113,11 +110,7 @@ class DiffMixin(_BaseMixin):
                 if not ch.isspace():
                     self._docx_flat_to_raw.append(i)
             else:
-                if not ch.isspace() and (
-                    '一' <= ch <= '鿿' or '㐀' <= ch <= '䶿'
-                    or 'a' <= ch <= 'z' or 'A' <= ch <= 'Z'
-                    or '0' <= ch <= '9'
-                ):
+                if not ch.isspace() and self._is_content_char(ch):
                     self._docx_flat_to_raw.append(i)
 
         # 保留之前已同意的块状态（切换比对符号等场景下避免丢失审核决定）

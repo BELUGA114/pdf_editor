@@ -67,7 +67,6 @@ class DocxPdfReviewer(LoaderMixin, OCRMixin, BatchMixin, DiffMixin, ExportMixin)
 
         self.docx_text = ""
         self.pdf_text = ""
-        self.diff_results = []
         self.cleaned_pdf_images = []
         self._saved_sel = None
         self.compare_symbols = tk.BooleanVar(value=True)

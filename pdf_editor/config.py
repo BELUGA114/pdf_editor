@@ -6,6 +6,9 @@ from rapidocr_onnxruntime import RapidOCR
 
 ocr_engine = RapidOCR()
 
+# OOXML 主命名空间（Clark notation），loader/export 模块共用
+_WML_NS = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+
 
 class _BaseMixin:
     """所有 Mixin 的共享基类 — 声明跨 Mixin 属性，消除 Pylance 类型警告"""
@@ -76,6 +79,7 @@ class _BaseMixin:
     def _set_status(self, text: str, level: str = "") -> None: ...
     def _show_crop_dialog(self) -> None: ...
     def _is_red_header(self, paragraph) -> bool: ...
+    def _is_red_border(self, paragraph) -> bool: ...
     @staticmethod
     def _normalize_text(text: str) -> str: ...
     @staticmethod

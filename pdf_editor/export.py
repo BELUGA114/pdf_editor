@@ -1,7 +1,6 @@
 """导出 — 同步更新 DOCX、格式保留合并"""
 
 import os
-import tkinter as tk
 from tkinter import filedialog
 import difflib
 from .config import _BaseMixin
@@ -63,16 +62,20 @@ class ExportMixin(_BaseMixin):
         modified = ''.join(chars)
 
         # 按段落边界回写到 DOCX
+        # 关键：用 _docx_text_raw（未经编辑的原文）与 modified（编辑后的文本）逐段对比，
+        # 只在真正发生变化的段落回写，其余段落完全不动（保护 Run 格式）
         new_paras = modified.split('\n')
+        old_paras = raw_full.split('\n')
         body_paras = [p for p in self.doc_obj.paragraphs
-                      if not self._is_red_header(p) and p.text.strip()]
+                      if not self._is_red_header(p) and not self._is_red_border(p) and p.text.strip()]
         if not body_paras:
             return len(accepted)
         for i, para_text in enumerate(new_paras):
+            # 只在段落文本实际变化时才写入
+            if i < len(old_paras) and para_text == old_paras[i]:
+                continue
             if i < len(body_paras):
                 p = body_paras[i]
-                if p.text == para_text:
-                    continue
                 runs = p.runs
                 if not runs:
                     p.add_run(para_text)
@@ -114,17 +117,21 @@ class ExportMixin(_BaseMixin):
         return len(accepted)
 
 
+    def _ask_export_path(self, default_prefix: str = ""):
+        """共用导出文件对话框：返回用户选择的保存路径，取消返回 None"""
+        original = os.path.basename(self.docx_path) if self.docx_path else "document.docx"
+        prefix = self.export_prefix.get().strip()
+        default_name = (prefix + original) if prefix else (default_prefix + original)
+        return filedialog.asksaveasfilename(
+            defaultextension=".docx",
+            filetypes=[("Word Documents", "*.docx")],
+            initialfile=default_name) or None
 
     def save_synced_docx(self):
         """导出：将已同意的更改并入 DOCX（未同意则保留原文）"""
         if not self.doc_obj:
             return
-        original_name = os.path.basename(self.docx_path) if self.docx_path else "document.docx"
-        prefix = getattr(self, 'export_prefix', tk.StringVar(value="")).get().strip()
-        default_name = prefix + original_name if prefix else original_name
-        save_path = filedialog.asksaveasfilename(defaultextension=".docx",
-                                                       filetypes=[("Word Documents", "*.docx")],
-                                                       initialfile=default_name)
+        save_path = self._ask_export_path("")
         if not save_path:
             return
 

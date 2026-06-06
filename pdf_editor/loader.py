@@ -8,7 +8,7 @@ import numpy as np
 import fitz
 from docx import Document
 from PIL import Image, ImageDraw
-from .config import _BaseMixin
+from .config import _BaseMixin, _WML_NS
 
 class LoaderMixin(_BaseMixin):
     """文件加载 — DOCX/PDF 加载、文本提取、文件扫描"""
@@ -20,6 +20,32 @@ class LoaderMixin(_BaseMixin):
                 r, g, b = run.font.color.rgb
                 if r > 200 and g < 60 and b < 60:
                     return True
+        return False
+
+    def _is_red_border(self, paragraph) -> bool:
+        """检查段落底部是否有红色边框线（红头文件特征，OCR前过滤用）"""
+        try:
+            pPr = paragraph._element.find(_WML_NS + 'pPr')
+            if pPr is None:
+                return False
+            pBdr = pPr.find(_WML_NS + 'pBdr')
+            if pBdr is None:
+                return False
+            for direction in ('bottom', 'top'):
+                line = pBdr.find(_WML_NS + direction)
+                if line is not None:
+                    color = line.get(_WML_NS + 'color')
+                    if color and len(color) == 6:
+                        try:
+                            r = int(color[0:2], 16)
+                            g = int(color[2:4], 16)
+                            b = int(color[4:6], 16)
+                            if r > 200 and g < 60 and b < 60:
+                                return True
+                        except ValueError:
+                            pass
+        except Exception:
+            pass
         return False
 
 
@@ -42,7 +68,7 @@ class LoaderMixin(_BaseMixin):
         body_paragraphs = []
         self._docx_paragraphs = []
         for p in doc.paragraphs:
-            if self._is_red_header(p):
+            if self._is_red_header(p) or self._is_red_border(p):
                 continue
             if p.text.strip():
                 body_paragraphs.append(p.text)

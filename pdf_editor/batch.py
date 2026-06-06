@@ -110,7 +110,7 @@ class BatchMixin(_BaseMixin):
                 doc = Document(docx_path)
                 paras = []
                 for p in doc.paragraphs:
-                    if not self._is_red_header(p) and p.text.strip():
+                    if not self._is_red_header(p) and not self._is_red_border(p) and p.text.strip():
                         paras.append(p.text)
                 docx_text = self._normalize_text("\n".join(paras))
 
@@ -224,7 +224,7 @@ class BatchMixin(_BaseMixin):
             self._render_diff()
             self.txt_diff.bind("<Motion>", self._on_diff_motion)
             self._update_button_states()
-        elif self.txt_diff.get("1.0", tk.END).strip():
+        elif self.docx_text and self.pdf_text:
             self.analyze_diff(show_warning=False)
 
 
